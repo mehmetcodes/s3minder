@@ -1,0 +1,11 @@
+[package]
+name = "s3minder"
+version = "0.1.0"
+authors = ["My Name <mehmetcodes@gmail.com>"]
+edition = '2018'
+
+[dependencies]
+rusoto_core = "0.45"
+rusoto_s3 = "0.45.0"
+rusoto_credential = "0.45.0"
+tokio = { version = "0.2", features = ["full"] }
