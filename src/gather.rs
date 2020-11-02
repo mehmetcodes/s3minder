@@ -6,6 +6,8 @@ use rusoto_core::{Region};
 use rusoto_s3::{ S3, S3Client};
 use std::fmt;
 
+ 
+
 #[derive(Debug,Clone)]
 pub struct BucketMeta {
   bucket_name: String,
@@ -20,7 +22,32 @@ impl fmt::Display for BucketMeta {
     }
 }
 
-
+async fn get_bucket_location(b:String) -> BucketMeta {
+    let s3_client = S3Client::new(Region::UsWest1);   
+    let endpoint_l = s3_client.get_bucket_location( GetBucketLocationRequest{ bucket: b.clone() } ).await;
+    let mut meta_bucket:BucketMeta = BucketMeta{ bucket_name: b.clone(), bucket_endpoint: "Error".to_string(), contains_lifecycle: false, default_encryption: false};
+    
+    match endpoint_l{
+        Ok(val) =>{
+          //println!("ok {:?}", val.location_constraint);
+          
+         
+          let together = format!("{}{}{}", b.as_str(), ".s3-",val.location_constraint.clone().unwrap());
+          meta_bucket = BucketMeta { 
+            bucket_name: b.clone(),  
+            bucket_endpoint: ["",b.as_str(),".s3-",&(val.location_constraint.clone().unwrap()),".amazonaws.com"].join("").to_owned(), 
+            contains_lifecycle: false,
+            default_encryption: false,
+            };
+        },
+        Err(e) => {
+          eprintln!("We got an error{}",e);
+        }
+        
+      }
+      return meta_bucket
+    }
+    
 
 
 pub async fn get_buckets(){
@@ -30,13 +57,15 @@ pub async fn get_buckets(){
     let mut vec = Vec::<BucketMeta>::new();
     for bucket in resp.buckets.unwrap().iter() {
       //println!("{:?}", bucket.name );
+      let meta_bucket = get_bucket_location(bucket.name.clone().unwrap()).await;
+      /*
       let endpoint_l = s3_client.get_bucket_location( GetBucketLocationRequest{ bucket: bucket.name.clone().unwrap() } ).await;
       match endpoint_l{
         Ok(val) =>{
           //println!("ok {:?}", val.location_constraint);
           let meta_bucket = BucketMeta { 
             bucket_name: bucket.name.clone().unwrap(), 
-            bucket_endpoint: [&(bucket.name.clone().unwrap()),".s3-",&(val.location_constraint.clone().unwrap()),".amazonaws.com"].join("").to_owned(), 
+            bucket_endpoint: ["",&(bucket.name.clone().unwrap()),".s3-",&(val.location_constraint.clone().unwrap()),".amazonaws.com"].join("").to_owned(), 
             contains_lifecycle: false,
             default_encryption: false,
         };
@@ -46,7 +75,8 @@ pub async fn get_buckets(){
           eprintln!("We got an error{}",e);
         }
       }
-
+      */
+      vec.push( meta_bucket );
       let result = s3_client.get_bucket_lifecycle( GetBucketLifecycleRequest { bucket: bucket.name.clone().unwrap() } ).await; 
       match result{
         Ok(r) => { 
@@ -77,12 +107,9 @@ pub async fn get_buckets(){
     println!("{}",(vec2.pop()).unwrap() );
   }
 
-  async fn get_encryption_configuration( bucket:String ) -> Vec<BucketMeta>{
+  async fn get_encryption_configuration(vector:&Vec<BucketMeta> ) -> Vec<BucketMeta>{
     let new_vec = vector.clone();
     return new_vec
   }
 
-  async fn get_lifecycle_configuration(vector:&Vec<BucketMeta> ) -> Vec<BucketMeta>{
-    let new_vec = vector.clone();
-    return new_vec
-  }
+  
