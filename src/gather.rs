@@ -1,7 +1,9 @@
 extern crate rusoto_core;
 extern crate rusoto_s3;
 extern crate rusoto_credential;
-use rusoto_s3::{GetBucketLifecycleRequest,GetBucketLocationRequest};
+use rusoto_s3::ListObjectsRequest;
+use rusoto_s3::CopyObjectRequest;
+use rusoto_s3::{GetBucketLifecycleRequest,GetBucketLocationRequest,HeadObjectRequest};
 use rusoto_core::{Region};
 use rusoto_s3::{ S3, S3Client};
 use std::fmt;
@@ -58,24 +60,6 @@ pub async fn get_buckets(){
     for bucket in resp.buckets.unwrap().iter() {
       //println!("{:?}", bucket.name );
       let meta_bucket = get_bucket_location(bucket.name.clone().unwrap()).await;
-      /*
-      let endpoint_l = s3_client.get_bucket_location( GetBucketLocationRequest{ bucket: bucket.name.clone().unwrap() } ).await;
-      match endpoint_l{
-        Ok(val) =>{
-          //println!("ok {:?}", val.location_constraint);
-          let meta_bucket = BucketMeta { 
-            bucket_name: bucket.name.clone().unwrap(), 
-            bucket_endpoint: ["",&(bucket.name.clone().unwrap()),".s3-",&(val.location_constraint.clone().unwrap()),".amazonaws.com"].join("").to_owned(), 
-            contains_lifecycle: false,
-            default_encryption: false,
-        };
-          vec.push( meta_bucket );
-        },
-        Err(e) => {
-          eprintln!("We got an error{}",e);
-        }
-      }
-      */
       vec.push( meta_bucket );
       let result = s3_client.get_bucket_lifecycle( GetBucketLifecycleRequest { bucket: bucket.name.clone().unwrap() } ).await; 
       match result{
@@ -102,14 +86,92 @@ pub async fn get_buckets(){
     }
     for bucket_meta in vec.iter(){
          println!("{}", bucket_meta);
+         list_items_in_bucket(&s3_client, bucket_meta.bucket_name.as_str() ).await;
     }
-    let mut vec2 = get_encryption_configuration(&vec).await;
-    println!("{}",(vec2.pop()).unwrap() );
+    
+    
   }
 
-  async fn get_encryption_configuration(vector:&Vec<BucketMeta> ) -> Vec<BucketMeta>{
-    let new_vec = vector.clone();
-    return new_vec
+
+  async fn list_items_in_bucket(client: &S3Client, bucket: &str) {
+    let mut list_request = ListObjectsRequest {
+        delimiter: Some("/".to_owned()),
+        bucket: bucket.to_owned(),
+        max_keys: Some(1000),
+        ..Default::default()
+    };
+    let mut response = client
+          .list_objects(list_request.clone())
+          .await
+          .expect("list objects failed");
+      
+    loop{
+      //println!("Items in bucket, page 1: {:#?}", response1);
+      println!("Args: bucket {}",bucket.to_owned());
+      let contents1 = response.contents;
+      match contents1{
+        Some(_)=> {
+          for obj in contents1.unwrap().iter(){
+            println!("{}", obj.key.as_ref().unwrap());
+            //copy_object(client, bucket, obj.key.as_ref().unwrap()).await;
+            let head_check_encryption = HeadObjectRequest{ bucket:bucket.to_owned(), key: obj.key.clone().unwrap().to_string().to_owned(),..Default::default() };
+            let head_result =  client.head_object(head_check_encryption).await.expect("Failed to retrieve head for object");
+            println!("{:#?}",head_result);
+            
+            match head_result.ssekms_key_id{
+              Some(key_id)=>{
+                println!("Encrypted by KMS key {} {}",key_id,obj.key.clone().unwrap().as_str() );
+
+              },
+              _=>{
+                 match head_result.server_side_encryption{
+                   Some(algo)=>{
+                      println!("Encrypted by SSE-C using {}",algo)
+                   }
+                   _=>{
+                     println!("Not encrypted")
+                   }
+                 }
+              }
+            }
+            
+          }
+        },
+        _ =>{
+          println!("No objects found");
+        }
+      }
+      match response.next_marker {
+          Some(_)=>{
+
+          },
+          _=>{
+            println!("No further pages of objects");
+            break;
+          }
+      }
+      list_request.marker = Some(response.next_marker.unwrap());
+      list_request.max_keys = Some(1000);
+      response = client
+          .list_objects(list_request.clone())
+          .await
+          .expect("list objects failed");
+    }
   }
 
-  
+  async fn copy_object(client: &S3Client, bucket: &str, filename: &str) {
+    let req = CopyObjectRequest {
+        bucket: bucket.to_owned(),
+        key: filename.to_owned(),
+        copy_source: format!("{}/{}", bucket, filename),
+        content_type: Some("application/json".to_owned()),
+        metadata_directive: Some("REPLACE".to_owned()),
+        server_side_encryption: Some("AES256".to_owned()),
+        ..Default::default()
+    };
+    let result = client
+        .copy_object(req)
+        .await
+        .expect("Couldn't copy object");
+    println!("{:#?}", result);
+  }
