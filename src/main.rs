@@ -25,14 +25,18 @@ async fn main() {
        .author("Mehmet Yilmaz")
        .arg(Arg::with_name("config")
                                .short("c")
-                               .long("config")
+                               .long("csv")
                                .value_name("FILE")
-                               .help("Sets a custom config file")
+                               .help("Sets a custom csv file of buckets to check")
                                .takes_value(true))
        .get_matches(); 
- 
-
-  gather::get_buckets().await;
+  let config = matches.value_of("config").unwrap_or("");
+  
+  
+  match config {
+    ""=> { gather::get_buckets().await;},
+    _=>{ println!("Will attempt to use {} as a CSV list of buckets",config); }
+  }
 }
 
 
