@@ -1,22 +1,23 @@
 extern crate rusoto_core;
 extern crate rusoto_s3;
 extern crate rusoto_credential;
-use rusoto_s3::ListObjectsRequest;
-use rusoto_s3::CopyObjectRequest;
-use rusoto_s3::{GetBucketLifecycleRequest,GetBucketLocationRequest,HeadObjectRequest};
+
+use rusoto_s3::{GetBucketLifecycleRequest,GetBucketLocationRequest,HeadObjectRequest,CopyObjectRequest,ListObjectsRequest};
 use rusoto_core::{Region};
 use rusoto_s3::{ S3, S3Client};
 use std::fmt;
 
  
 
-#[derive(Debug,Clone)]
+#[derive(Debug,Clone,Default)]
 pub struct BucketMeta {
   bucket_name: String,
   bucket_endpoint: String,
   contains_lifecycle: bool,
   default_encryption: bool,
 }
+
+
 
 impl fmt::Display for BucketMeta {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

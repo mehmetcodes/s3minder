@@ -10,3 +10,4 @@ rusoto_s3 = "0.45.0"
 rusoto_dynamodb = "0.45.0"
 rusoto_credential = "0.45.0"
 tokio = { version = "0.2", features = ["full"] }
+clap = "2"
