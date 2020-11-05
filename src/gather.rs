@@ -175,11 +175,11 @@ pub async fn get_buckets(){
   }
 #[cfg(test)]
 mod tests {
+
   extern crate uuid;
-  use rusoto_s3::CreateBucketConfiguration;
-use rusoto_s3::DeleteBucketRequest;
-use rusoto_s3::CreateBucketRequest;
-use uuid::Uuid;
+  use rusoto_s3::DeleteBucketRequest;
+  use rusoto_s3::CreateBucketRequest;
+  use uuid::Uuid;
   use super::*;
 
   static mut bucket:Option<String> = None;
@@ -196,7 +196,7 @@ use uuid::Uuid;
     let my_uuid = Uuid::new_v4();
     let mut bucket_name = String::from("");
     unsafe{
-      bucket = Some(format!("{}{}", "iherbtest-",my_uuid));
+      bucket = Some(format!("{}{}", "ihtest-",my_uuid));
       println!("{}",bucket.as_ref().unwrap_or(&String::from("")));
       bucket_name = bucket.clone().unwrap();
     }
