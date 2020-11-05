@@ -5,14 +5,8 @@ extern crate rusoto_dynamodb;
 extern crate clap;
 
 //use std::default::Default;
-use std::vec::Vec;
-use std::env;
-use rusoto_s3::{GetBucketLifecycleRequest,GetBucketLocationRequest};
-use rusoto_core::{Region};
-use rusoto_s3::{ S3, S3Client};
 use tokio;
 mod gather;
-use rusoto_dynamodb::{DynamoDb, DynamoDbClient, ListTablesInput};
 use clap::{Arg, App, SubCommand};
 
 
@@ -29,13 +23,53 @@ async fn main() {
                                .value_name("FILE")
                                .help("Sets a custom csv file of buckets to check")
                                .takes_value(true))
-       .get_matches(); 
+        .arg(Arg::with_name("repair")
+                                .short("r")
+                                .long("repair")
+                                .help("Set default encryption policies on all buckets")
+                                .takes_value(false))
+        .arg(Arg::with_name("v")
+                                .short("v")
+                                .long("verbose")
+                                .help("Set verbose output")
+                                .takes_value(false))
+        .arg(Arg::with_name("d")
+                                .short("d")
+                                .long("debug")
+                                .help("Set debug output")
+                                .takes_value(false))                        
+        .get_matches(); 
   let config = matches.value_of("config").unwrap_or("");
+  let repair = matches.occurrences_of("repair");
+  let debug  = matches.occurrences_of("d");
+  let verbose  = matches.occurrences_of("v");
+
+  if repair == 0 {
+    println!("This is a dry run which will update you on bucket state.\nIf you would like to apply policy, use the --repair / -r option");
+  }
+
+  unsafe{
+
+    if debug > 0 {
+      gather::DEBUG = true;
+      println!("debug flag activated")
+    }
+
+    if verbose > 0 {
+      gather::VERBOSE = true;
+      println!("verbose flag activated")
+    }
   
-  
+  }
+
   match config {
-    ""=> { gather::get_buckets().await;},
-    _=>{ println!("Will attempt to use {} as a CSV list of buckets",config); }
+    ""=> { 
+      println!("{}",repair);
+      gather::get_buckets().await;},
+    _=>{ 
+      println!("{}",repair);
+      println!("Will attempt to use {} as a CSV list of buckets",config); 
+    }
   }
 }
 

@@ -8,7 +8,8 @@ use rusoto_s3::{ S3, S3Client};
 use std::fmt;
 
 
-
+pub static mut DEBUG:bool = false;
+pub static mut VERBOSE:bool = false;
 
 #[derive(Debug,Clone,Default)]
 pub struct BucketMeta {
@@ -16,20 +17,21 @@ pub struct BucketMeta {
   bucket_endpoint: String,
   contains_lifecycle: bool,
   default_encryption: bool,
+  contains_transit_policy:bool,
 }
 
 
 
 impl fmt::Display for BucketMeta {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "(bucket: {},endpoint: {},had lifecycle {},default encryption {})", self.bucket_name, self.bucket_endpoint,self.contains_lifecycle, self.default_encryption)
+        write!(f, "(bucket: {},endpoint: {},had lifecycle {},default encryption {},contains transit policy {})", self.bucket_name, self.bucket_endpoint,self.contains_lifecycle, self.default_encryption,self.contains_transit_policy)
     }
 }
 
 async fn get_bucket_location(b:String) -> BucketMeta {
     let s3_client = S3Client::new(Region::UsWest1);   
     let endpoint_l = s3_client.get_bucket_location( GetBucketLocationRequest{ bucket: b.clone() } ).await;
-    let mut meta_bucket:BucketMeta = BucketMeta{ bucket_name: b.clone(), bucket_endpoint: "Error".to_string(), contains_lifecycle: false, default_encryption: false};
+    let mut meta_bucket:BucketMeta = BucketMeta{ bucket_name: b.clone(), bucket_endpoint: "Error".to_string(), contains_lifecycle: false, default_encryption: false, contains_transit_policy:false};
     
     match endpoint_l{
         Ok(val) =>{
@@ -38,6 +40,7 @@ async fn get_bucket_location(b:String) -> BucketMeta {
             bucket_endpoint: ["",b.as_str(),".s3-",&(val.location_constraint.clone().unwrap()),".amazonaws.com"].join("").to_owned(), 
             contains_lifecycle: false,
             default_encryption: false,
+            contains_transit_policy: false,
             };
         },
         Err(e) => {
@@ -56,14 +59,17 @@ pub async fn get_buckets(){
     let resp = resp.unwrap();
     let mut vec = Vec::<BucketMeta>::new();
     for bucket in resp.buckets.unwrap().iter() {
-      //println!("{:?}", bucket.name );
       let meta_bucket = get_bucket_location(bucket.name.clone().unwrap()).await;
       vec.push( meta_bucket );
       let result = s3_client.get_bucket_lifecycle( GetBucketLifecycleRequest { bucket: bucket.name.clone().unwrap() } ).await; 
       match result{
         Ok(r) => { 
           { 
-              println!("Rules {:?}",r.rules );
+            unsafe{
+              if DEBUG {
+                  println!("Rules {:?}",r.rules );
+              }
+            }
           }
           let mut update_meta= vec.pop().unwrap();
           update_meta.contains_lifecycle = true;
@@ -105,29 +111,52 @@ pub async fn get_buckets(){
       
     loop{
       //println!("Items in bucket, page 1: {:#?}", response1);
-      println!("Args: bucket {}",bucket.to_owned());
+      unsafe{
+        if DEBUG {
+          println!("Args: bucket {}",bucket.to_owned());
+        }
+      }
       let contents1 = response.contents;
       match contents1{
         Some(_)=> {
           for obj in contents1.unwrap().iter(){
-            println!("{}", obj.key.as_ref().unwrap());
+            unsafe{
+              if VERBOSE {
+                println!("{}", obj.key.as_ref().unwrap());
+              }
+            }
             //copy_object(client, bucket, obj.key.as_ref().unwrap()).await;
             let head_check_encryption = HeadObjectRequest{ bucket:bucket.to_owned(), key: obj.key.clone().unwrap().to_string().to_owned(),..Default::default() };
             let head_result =  client.head_object(head_check_encryption).await.expect("Failed to retrieve head for object");
-            println!("{:#?}",head_result);
-            
+            unsafe{
+              if DEBUG {  
+                println!("{:#?}",head_result);
+              }
+            }
             match head_result.ssekms_key_id{
               Some(key_id)=>{
-                println!("Encrypted by KMS key {} {}",key_id,obj.key.clone().unwrap().as_str() );
-
+                unsafe{
+                  if VERBOSE {
+                    println!("Encrypted by KMS key {} {}",key_id,obj.key.clone().unwrap().as_str() );
+                  }
+                }
               },
               _=>{
                  match head_result.server_side_encryption{
                    Some(algo)=>{
-                      println!("Encrypted by SSE-C using {}",algo)
+                    unsafe{
+                      if VERBOSE {
+                        println!("Encrypted by SSE-C using {}",algo);
+                      }
+                    }
                    }
                    _=>{
-                     println!("Not encrypted")
+                    unsafe{
+                      if VERBOSE {
+                        println!("Not encrypted");
+                      }
+                    }
+                    
                    }
                  }
               }
@@ -136,7 +165,12 @@ pub async fn get_buckets(){
           }
         },
         _ =>{
-          println!("No objects found");
+          unsafe{
+            if VERBOSE {
+              println!("No objects found");
+            }
+          }
+          
         }
       }
       match response.next_marker {
@@ -144,7 +178,12 @@ pub async fn get_buckets(){
 
           },
           _=>{
-            println!("No further pages of objects");
+            unsafe{
+              if DEBUG {
+                println!("No further pages of objects");
+              }
+            }
+           
             break;
           }
       }
@@ -194,7 +233,7 @@ mod tests {
 
    async fn setup_bucket(){
     let my_uuid = Uuid::new_v4();
-    let mut bucket_name = String::from("");
+    let bucket_name;
     unsafe{
       bucket = Some(format!("{}{}", "ihtest-",my_uuid));
       println!("{}",bucket.as_ref().unwrap_or(&String::from("")));
