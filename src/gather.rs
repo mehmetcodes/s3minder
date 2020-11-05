@@ -7,7 +7,8 @@ use rusoto_core::{Region};
 use rusoto_s3::{ S3, S3Client};
 use std::fmt;
 
- 
+
+
 
 #[derive(Debug,Clone,Default)]
 pub struct BucketMeta {
@@ -32,10 +33,6 @@ async fn get_bucket_location(b:String) -> BucketMeta {
     
     match endpoint_l{
         Ok(val) =>{
-          //println!("ok {:?}", val.location_constraint);
-          
-         
-          let together = format!("{}{}{}", b.as_str(), ".s3-",val.location_constraint.clone().unwrap());
           meta_bucket = BucketMeta { 
             bucket_name: b.clone(),  
             bucket_endpoint: ["",b.as_str(),".s3-",&(val.location_constraint.clone().unwrap()),".amazonaws.com"].join("").to_owned(), 
@@ -176,3 +173,51 @@ pub async fn get_buckets(){
         .expect("Couldn't copy object");
     println!("{:#?}", result);
   }
+#[cfg(test)]
+mod tests {
+  extern crate uuid;
+  use rusoto_s3::CreateBucketConfiguration;
+use rusoto_s3::DeleteBucketRequest;
+use rusoto_s3::CreateBucketRequest;
+use uuid::Uuid;
+  use super::*;
+
+  static mut bucket:Option<String> = None;
+
+  #[actix_rt::test]
+  async fn test_copy(){
+      setup_bucket().await;
+      assert_eq!(true,true);
+      teardown_bucket().await;
+
+  }
+
+   async fn setup_bucket(){
+    let my_uuid = Uuid::new_v4();
+    let mut bucket_name = String::from("");
+    unsafe{
+      bucket = Some(format!("{}{}", "iherbtest-",my_uuid));
+      println!("{}",bucket.as_ref().unwrap_or(&String::from("")));
+      bucket_name = bucket.clone().unwrap();
+    }
+    let s3_client = S3Client::new(Region::UsEast1);
+    let create_bucket_result = s3_client.create_bucket(CreateBucketRequest{bucket:bucket_name,..Default::default()}).await;
+    match create_bucket_result {
+      Ok(result)=>{ println!("{:#?}",result)},
+      Err(result)=>{  println!("{:#?}",result)  }
+    }
+  }
+
+  async fn teardown_bucket(){
+    let mut bucket_name = String::from("");
+    unsafe{
+      bucket_name = bucket.clone().unwrap();
+    }
+    let s3_client = S3Client::new(Region::UsEast1);
+    let delete_bucket_result = s3_client.delete_bucket(DeleteBucketRequest{bucket:bucket_name }).await;
+    match delete_bucket_result {
+      Ok(result)=>{ println!("{:#?}",result)},
+      Err(result)=>{  println!("{:#?}",result)  }
+    }
+  }
+}
