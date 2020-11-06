@@ -1,11 +1,15 @@
 extern crate rusoto_core;
 extern crate rusoto_s3;
 extern crate rusoto_credential;
+extern crate lazy_static;
 
 use rusoto_s3::{GetBucketLifecycleRequest,GetBucketLocationRequest,HeadObjectRequest,CopyObjectRequest,ListObjectsRequest};
 use rusoto_core::{Region};
 use rusoto_s3::{ S3, S3Client};
 use std::fmt;
+use std::collections::HashMap;
+use std::sync::Mutex;
+use lazy_static::lazy_static;
 
 /// Sets debug printouts to give details  
 pub static mut DEBUG:bool = false;
@@ -13,8 +17,14 @@ pub static mut DEBUG:bool = false;
 /// Sets verbose printouts to give details about the results
 pub static mut VERBOSE:bool = false;
 
+lazy_static! {
+  static ref BUCKET_LIST:Mutex< HashMap<String,BucketMeta> > = Mutex::new( 
+                    HashMap::new()
+                );
+    
+}
 
-static mut whateva:Vec<BucketMeta> =  Vec::<BucketMeta>::new();
+
 
 ///
 /// 
@@ -33,7 +43,7 @@ pub struct BucketMeta {
 
 impl fmt::Display for BucketMeta {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "(bucket: {},endpoint: {},had lifecycle {},default encryption {},contains transit policy {})", self.bucket_name, self.bucket_endpoint,self.contains_lifecycle, self.default_encryption,self.contains_transit_policy)
+        write!(f, "{}\n-----===================\n\tendpoint: {},\n\thas lifecycle: {},\n\tdefault encryption: {},\n\tcontains transit policy: {}", self.bucket_name, self.bucket_endpoint,self.contains_lifecycle, self.default_encryption,self.contains_transit_policy)
     }
 }
 
@@ -104,13 +114,27 @@ pub async fn get_buckets(){
       }  
     }
     for bucket_meta in vec.iter(){
-         println!("{}", bucket_meta);
+         unsafe{
+          if VERBOSE{
+            println!("{}", bucket_meta);
+          }
+        }
+          BUCKET_LIST.lock().unwrap().insert(bucket_meta.bucket_name.clone() ,bucket_meta.clone()); 
+        
+        
          list_items_in_bucket(&s3_client, bucket_meta.bucket_name.as_str() ).await;
     }
     
-    
+   
   }
 
+
+  pub fn print_buckets(){
+   
+    for (_name,bucket_meta) in BUCKET_LIST.lock().unwrap().iter(){
+      println!("{}", bucket_meta);
+    } 
+  }
 
   async fn list_items_in_bucket(client: &S3Client, bucket: &str) {
     let mut list_request = ListObjectsRequest {

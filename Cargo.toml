@@ -13,3 +13,4 @@ tokio = { version = "0.2", features = ["full"] }
 clap = "2"
 uuid = { version = "0.8", features = ["serde", "v4"] }
 actix-rt = "*"
+lazy_static = "1.4" 

@@ -45,7 +45,7 @@ async fn main() {
   let verbose  = matches.occurrences_of("v");
 
   if repair == 0 {
-    println!("This is a dry run which will update you on bucket state.\nIf you would like to apply policy, use the --repair / -r option");
+    println!("This is a dry run which will update you on bucket state.\nIf you would like to apply policy, use the --repair / -r option\n\n");
   }
 
   unsafe{
@@ -64,13 +64,17 @@ async fn main() {
 
   match config {
     ""=> { 
-      println!("{}",repair);
-      gather::get_buckets().await;},
+      if debug > 0 {
+        println!("{}",repair);
+      }
+        gather::get_buckets().await;
+      },
     _=>{ 
       println!("{}",repair);
       println!("Will attempt to use {} as a CSV list of buckets",config); 
     }
   }
+  gather::print_buckets();
 }
 
 
