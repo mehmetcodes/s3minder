@@ -7,9 +7,18 @@ use rusoto_core::{Region};
 use rusoto_s3::{ S3, S3Client};
 use std::fmt;
 
-
+/// Sets debug printouts to give details  
 pub static mut DEBUG:bool = false;
+
+/// Sets verbose printouts to give details about the results
 pub static mut VERBOSE:bool = false;
+
+
+static mut whateva:Vec<BucketMeta> =  Vec::<BucketMeta>::new();
+
+///
+/// 
+/// 
 
 #[derive(Debug,Clone,Default)]
 pub struct BucketMeta {
@@ -52,7 +61,9 @@ async fn get_bucket_location(b:String) -> BucketMeta {
     }
     
 
-
+/// # get_buckets - gets all buckets and metadata
+/// Connects to the UsWest1 Region, not for any particular reason
+/// Then requests the list of buckets, which should get buckets from all regions
 pub async fn get_buckets(){
     let s3_client = S3Client::new(Region::UsWest1);
     let resp = s3_client.list_buckets().await;
@@ -77,7 +88,11 @@ pub async fn get_buckets(){
         },
         Err(e) => { 
           if  e.to_string().contains("<Code>NoSuchLifecycleConfiguration</Code>")  { 
-            //println!("We have no lifecycle\n\t {}", e );
+            unsafe{
+              if DEBUG {
+                  println!("We found no lifecycle configruation for the bucket {}",bucket.name.as_ref().unwrap());
+              }
+            }
             let mut update_meta= vec.pop().unwrap();
             update_meta.contains_lifecycle = false;
             vec.push(update_meta);
@@ -110,7 +125,6 @@ pub async fn get_buckets(){
           .expect("list objects failed");
       
     loop{
-      //println!("Items in bucket, page 1: {:#?}", response1);
       unsafe{
         if DEBUG {
           println!("Args: bucket {}",bucket.to_owned());
