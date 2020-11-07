@@ -259,23 +259,75 @@ mod tests {
   use uuid::Uuid;
   use super::*;
 
-  static mut bucket:Option<String> = None;
+  static mut BUCKET:Option<String> = None;
 
+  
   #[actix_rt::test]
   async fn test_copy(){
       setup_bucket().await;
+      create_objects().await;
       assert_eq!(true,true);
       teardown_bucket().await;
 
   }
 
+  #[actix_rt::test]
+  async fn test_transit_policy_exists(){
+    setup_bucket().await;
+    assert_eq!(true,true);
+    teardown_bucket().await;
+  }
+
+  #[actix_rt::test]
+  async fn test_transit_policy_application(){
+      setup_bucket().await;
+      assert_eq!(true,true);
+      teardown_bucket().await;
+  }
+
+  #[actix_rt::test]
+  async fn test_encryption_policy_exists(){
+      setup_bucket().await;
+      assert_eq!(true,true);
+      teardown_bucket().await;
+  }
+
+
+  #[actix_rt::test]
+  async fn test_encryption_policy_application(){
+      setup_bucket().await;
+      assert_eq!(true,true);
+      teardown_bucket().await;
+  }
+
+
+  #[actix_rt::test]
+  async fn test_lifecycle_policy_exists(){
+      setup_bucket().await;
+      assert_eq!(true,true);
+      teardown_bucket().await;
+  }
+
+  #[actix_rt::test]
+  async fn test_lifecycle_policy_application(){
+    setup_bucket().await;
+    assert_eq!(true,true);
+    teardown_bucket().await;
+  }
+  /// This functions purpose is to create a bunch of objects for a bucket for testing purposes
+  async fn create_objects(){
+
+  }
+
+
+
    async fn setup_bucket(){
     let my_uuid = Uuid::new_v4();
     let bucket_name;
     unsafe{
-      bucket = Some(format!("{}{}", "ihtest-",my_uuid));
-      println!("{}",bucket.as_ref().unwrap_or(&String::from("")));
-      bucket_name = bucket.clone().unwrap();
+      BUCKET = Some(format!("{}{}", "ihtest-",my_uuid));
+      println!("{}",BUCKET.as_ref().unwrap_or(&String::from("")));
+      bucket_name = BUCKET.clone().unwrap();
     }
     let s3_client = S3Client::new(Region::UsEast1);
     let create_bucket_result = s3_client.create_bucket(CreateBucketRequest{bucket:bucket_name,..Default::default()}).await;
@@ -288,7 +340,7 @@ mod tests {
   async fn teardown_bucket(){
     let mut bucket_name = String::from("");
     unsafe{
-      bucket_name = bucket.clone().unwrap();
+      bucket_name = BUCKET.clone().unwrap();
     }
     let s3_client = S3Client::new(Region::UsEast1);
     let delete_bucket_result = s3_client.delete_bucket(DeleteBucketRequest{bucket:bucket_name }).await;
