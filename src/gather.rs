@@ -350,7 +350,7 @@ mod tests {
               
             },
             _=>{
-              println!("try_lock failed");
+              println!("try_lock failed for {} setup",bucket_name);
               delay_for(Duration::from_millis(1000)).await;
             },
            
@@ -379,7 +379,7 @@ mod tests {
               break;  
               },
               _=>{
-                println!("try_lock failed");
+                println!("try_lock failed for {} teardown",bucket_name);
                 delay_for(Duration::from_millis(1)).await;
               },
              
