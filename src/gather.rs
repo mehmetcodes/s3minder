@@ -260,69 +260,66 @@ mod tests {
   use rusoto_s3::CreateBucketRequest;
   use uuid::Uuid;
   use super::*;
-  use std::sync::RwLock;
-  use std::thread;
-  use lazy_static::lazy_static;
-  
+  use std::sync::Mutex;
+  use tokio::time::{delay_for, Duration};
   
   lazy_static! {
-                static ref BUCKET:RwLock< HashMap<String,i8> > = RwLock::new( 
-                    HashMap::new()
-                );
-    
+
+    static ref S3_CLIENT:S3Client = S3Client::new(Region::UsEast1);
+    static ref LOCK:Mutex<bool> =  Mutex::new(true);
   }
-  
+
   #[actix_rt::test]
   async fn test_copy(){
-      let ref bn = setup_bucket().await;
+      let bn = setup_bucket().await;
       create_objects().await;
       assert_eq!(true,true);
-      teardown_bucket(bn).await;
+      teardown_bucket(&bn).await;
 
   }
 
   #[actix_rt::test]
   async fn test_transit_policy_exists(){
-    let ref bn = setup_bucket().await;
-    assert_eq!(true,true);
-    teardown_bucket(bn).await;
+    let bn = setup_bucket().await;
+      assert_eq!(true,true);
+      teardown_bucket(&bn).await;
   }
 
   #[actix_rt::test]
   async fn test_transit_policy_application(){
-      let ref bn = setup_bucket().await;
-      assert_eq!(true,true);
-      teardown_bucket(bn).await;
+    let bn = setup_bucket().await;
+    assert_eq!(true,true);
+    teardown_bucket(&bn).await;
   }
 
   #[actix_rt::test]
   async fn test_encryption_policy_exists(){
-      let ref bn = setup_bucket().await;
-      assert_eq!(true,true);
-      teardown_bucket(bn).await;
+    let bn = setup_bucket().await;
+    assert_eq!(true,true);
+    teardown_bucket(&bn).await;
   }
 
 
   #[actix_rt::test]
   async fn test_encryption_policy_application(){
-      let ref bn = setup_bucket().await;
+      let bn = setup_bucket().await;
       assert_eq!(true,true);
-      teardown_bucket(bn).await;
+      teardown_bucket(&bn).await;
   }
 
 
   #[actix_rt::test]
   async fn test_lifecycle_policy_exists(){
-      let ref bn = setup_bucket().await;
+      let bn = setup_bucket().await;
       assert_eq!(true,true);
-      teardown_bucket(bn).await;
+      teardown_bucket(&bn).await;
   }
 
   #[actix_rt::test]
   async fn test_lifecycle_policy_application(){
-    let ref bn = setup_bucket().await;
+    let bn = setup_bucket().await;
     assert_eq!(true,true);
-    teardown_bucket(bn).await;
+    teardown_bucket(&bn).await;
   }
   /// This functions purpose is to create a bunch of objects for a bucket for testing purposes
   async fn create_objects(){
@@ -331,58 +328,65 @@ mod tests {
 
 
 
-   async fn setup_bucket()->String{
+  async fn setup_bucket()->String{
     let my_uuid = Uuid::new_v4();
     let bucket_name:String;
     bucket_name = format!("{}{}", "ihtest-",my_uuid);
-    {
-      let mut lock = BUCKET.write();
-      loop{
-        match lock{
-          Ok(result)=>{
-                println!("{:#?}",result);
-                break;
-              },
-          Err(result)=>{  println!("{:#?}",result) }
-        }
-        lock = BUCKET.write();
-      } 
-      BUCKET.write().unwrap().insert(bucket_name.clone(),1);
-      let s3_client = S3Client::new(Region::UsEast1);
-      let create_bucket_result = s3_client.create_bucket(CreateBucketRequest{bucket:bucket_name.clone(),..Default::default()}).await;
-    
-      match create_bucket_result {
-        Ok(result)=>{ println!("{:#?}",result)},
-        Err(result)=>{  println!("{:#?}",result)  }
-      }
+    let mut create_bucket_result;
+    loop{
+      let ref mut muty = LOCK.try_lock();
+      match muty{
+        Ok(_) => {
+              create_bucket_result = S3_CLIENT.create_bucket(CreateBucketRequest{bucket:bucket_name.clone(),..Default::default()}).await;
+              match create_bucket_result {
+                Ok(result)=>{ 
+                              println!("{:#?}",result); 
+                              break;
+                },
+                Err(result)=>{  
+                              println!("{:#?}",result)  
+                            },
+              }
+              
+            },
+            _=>{
+              println!("try_lock failed");
+              delay_for(Duration::from_millis(1000)).await;
+            },
+           
+      };
+          
     }
-    bucket_name.clone()
+    return bucket_name.clone();    
   }
+    
+    
+  
+   
+  
 
   async fn teardown_bucket(bucket_name: &String){
-     
-      let mut lock = BUCKET.read();
+      let delete_bucket_result;
       loop{
-        match lock{
-          Ok(result)=>{
-                println!("{:#?}",result);
-                break;
+        let ref mut muty = LOCK.try_lock();
+        match muty{
+          Ok(_) => {
+              delete_bucket_result = S3_CLIENT.delete_bucket(DeleteBucketRequest{bucket:bucket_name.to_string() }).await;
+              match delete_bucket_result {
+                  Ok(result)=>{ println!("{:#?}",result)},
+                  Err(result)=>{  println!("{:#?}",result)  }
+              }
+              break;  
               },
-          Err(result)=>{  println!("{:#?}",result) }
-        }
-        lock = BUCKET.read();
-      } 
-      let ref mut hm = BUCKET.read().unwrap();
-      if hm.contains_key(bucket_name){
-        //hm.remove(bucket_name);
-        let s3_client = S3Client::new(Region::UsEast1);
-        let delete_bucket_result = s3_client.delete_bucket(DeleteBucketRequest{bucket:bucket_name.to_string() }).await;
-        match delete_bucket_result {
-          Ok(result)=>{ println!("{:#?}",result)},
-          Err(result)=>{  println!("{:#?}",result)  }
-        }
-        
-      }
+              _=>{
+                println!("try_lock failed");
+                delay_for(Duration::from_millis(1)).await;
+              },
+             
+        };
+            
+      }  
+    
  
   }
 }
