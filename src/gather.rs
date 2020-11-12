@@ -3,6 +3,7 @@ extern crate rusoto_s3;
 extern crate rusoto_credential;
 extern crate lazy_static;
 
+
 use rusoto_s3::{GetBucketLifecycleRequest,GetBucketLocationRequest,HeadObjectRequest,CopyObjectRequest,ListObjectsRequest};
 use rusoto_core::{Region};
 use rusoto_s3::{ S3, S3Client};
@@ -30,6 +31,11 @@ lazy_static! {
 /// 
 /// 
 
+
+
+
+
+
 #[derive(Debug,Clone,Default)]
 pub struct BucketMeta {
   bucket_name: String,
@@ -46,6 +52,8 @@ impl fmt::Display for BucketMeta {
         write!(f, "{}\n-----===================\n\tendpoint: {},\n\thas lifecycle: {},\n\tdefault encryption: {},\n\tcontains transit policy: {}", self.bucket_name, self.bucket_endpoint,self.contains_lifecycle, self.default_encryption,self.contains_transit_policy)
     }
 }
+
+
 
 async fn get_bucket_location(b:String) -> BucketMeta {
     let s3_client = S3Client::new(Region::UsWest1);   
@@ -256,13 +264,20 @@ pub async fn get_buckets(){
 mod tests {
 
   extern crate uuid;
+  extern crate handlebars;
+  extern crate serde_json;
+
+  use std::error::Error;
   use rusoto_s3::DeleteBucketRequest;
   use rusoto_s3::CreateBucketRequest;
   use uuid::Uuid;
   use super::*;
   use std::sync::Mutex;
   use tokio::time::{delay_for, Duration};
-  
+  use handlebars::Handlebars;
+  #[macro_use]
+  use serde_json::json;
+
   lazy_static! {
 
     static ref S3_CLIENT:S3Client = S3Client::new(Region::UsEast1);
@@ -288,6 +303,8 @@ mod tests {
   #[actix_rt::test]
   async fn test_transit_policy_application(){
     let bn = setup_bucket().await;
+    let result = transit_policy_template(&bn).unwrap();
+    print!("{}",result);
     assert_eq!(true,true);
     teardown_bucket(&bn).await;
   }
@@ -295,6 +312,7 @@ mod tests {
   #[actix_rt::test]
   async fn test_encryption_policy_exists(){
     let bn = setup_bucket().await;
+    let sse = sse_policy_template().unwrap();
     assert_eq!(true,true);
     teardown_bucket(&bn).await;
   }
@@ -362,7 +380,7 @@ mod tests {
     
     
   async fn add_policy_to_bucket(){
-    
+
   }
    
   
@@ -391,4 +409,51 @@ mod tests {
     
  
   }
+
+  fn transit_policy_template(bucket:&String)->Result<String, Box<dyn Error>>{
+    let mut reg = Handlebars::new();
+    let default_transit_policy = r###"
+    {
+      "Id": "ExamplePolicy",
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Sid": "AllowSSLRequestsOnly",
+          "Action": "s3:*",
+          "Effect": "Deny",
+          "Resource": [
+            "arn:aws:s3:::{{bucket}}",
+            "arn:aws:s3:::{{bucket}}/*"
+          ],
+          "Condition": {
+             "Bool": {
+              "aws:SecureTransport": "false"
+            }
+          },
+          "Principal": "*"
+        }
+      ]
+    }
+    "###;
+    // render without register
+    
+    let result = reg.render_template(default_transit_policy, &json!({"bucket": bucket}))?;
+    Ok(result)
+  }
+
+ 
+  fn sse_policy_template()->Result<String, Box<dyn Error>>{
+    let default_sse_policy = r###"
+  <ServerSideEncryptionConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+    <Rule>
+       <ApplyServerSideEncryptionByDefault>
+          <SSEAlgorithm>AES256</SSEAlgorithm>
+       </ApplyServerSideEncryptionByDefault>
+    </Rule>
+ </ServerSideEncryptionConfiguration>"###;
+    
+    Ok(String::from(default_sse_policy))
+
+  }
+
 }
