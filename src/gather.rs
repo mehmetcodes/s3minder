@@ -2,8 +2,17 @@ extern crate rusoto_core;
 extern crate rusoto_s3;
 extern crate rusoto_credential;
 extern crate lazy_static;
+extern crate handlebars;
+extern crate serde_json;
 
 
+use rusoto_s3::ServerSideEncryptionConfiguration;
+use rusoto_s3::ServerSideEncryptionRule;
+use rusoto_s3::ServerSideEncryptionByDefault;
+use rusoto_s3::PutBucketEncryptionRequest;
+use rusoto_s3::GetBucketEncryptionRequest;
+use std::error::Error;
+use handlebars::Handlebars;
 use rusoto_s3::{GetBucketLifecycleRequest,GetBucketLocationRequest,HeadObjectRequest,CopyObjectRequest,ListObjectsRequest};
 use rusoto_core::{Region};
 use rusoto_s3::{ S3, S3Client};
@@ -11,6 +20,8 @@ use std::fmt;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use lazy_static::lazy_static;
+#[macro_use]
+use serde_json::json;
 
 /// Sets debug printouts to give details  
 pub static mut DEBUG:bool = false;
@@ -30,8 +41,51 @@ lazy_static! {
 ///
 /// 
 /// 
+pub fn transit_policy_template(bucket:&String)->Result<String, Box<dyn Error>>{
+  let mut reg = Handlebars::new();
+  let default_transit_policy = r###"
+  {
+    "Id": "ExamplePolicy",
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Sid": "AllowSSLRequestsOnly",
+        "Action": "s3:*",
+        "Effect": "Deny",
+        "Resource": [
+          "arn:aws:s3:::{{bucket}}",
+          "arn:aws:s3:::{{bucket}}/*"
+        ],
+        "Condition": {
+           "Bool": {
+            "aws:SecureTransport": "false"
+          }
+        },
+        "Principal": "*"
+      }
+    ]
+  }
+  "###;
+  // render without register
+  
+  let result = reg.render_template(default_transit_policy, &json!({"bucket": bucket}))?;
+  Ok(result)
+}
 
 
+pub fn sse_policy_template()->Result<String, Box<dyn Error>>{
+  let default_sse_policy = r###"
+<ServerSideEncryptionConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  <Rule>
+     <ApplyServerSideEncryptionByDefault>
+        <SSEAlgorithm>AES256</SSEAlgorithm>
+     </ApplyServerSideEncryptionByDefault>
+  </Rule>
+</ServerSideEncryptionConfiguration>"###;
+  
+  Ok(String::from(default_sse_policy))
+
+}
 
 
 
@@ -136,7 +190,52 @@ pub async fn get_buckets(){
    
   }
 
+  pub async fn has_encryption_rule( s3_client:&S3Client ,bucket:&String)->bool{
+    let encryption_result = s3_client.get_bucket_encryption( GetBucketEncryptionRequest{ bucket: bucket.to_string() } ).await;
+      match encryption_result{
+        Ok(e)=>{ println!("{:#?}",e); 
+          //println!("Rules {:?}",e.rules );
+          true
+        },
+        Err(e)=>{
+          if  e.to_string().contains("<Code>ServerSideEncryptionConfigurationNotFoundError</Code>")  { 
+            false
+          }else{
+            println!("{:#?}",e); 
+            false
+          }
+        },
+        _=>{ 
+          println!("Unknown apply encryption rule issue getting encryption config");
+          false
+        },
+      }
+  }
 
+  pub async fn apply_encryption_rule( s3_client:&S3Client ,bucket:&String, rule:&String){
+      if has_encryption_rule( s3_client, bucket ).await {
+        unsafe{
+          if DEBUG {
+            println!("{} already has an encryption rule",bucket);
+          }
+        }
+      }else{
+        let sse_rules_vector = vec![ServerSideEncryptionRule{  apply_server_side_encryption_by_default:Some(ServerSideEncryptionByDefault{ sse_algorithm:"AES256".to_string(),kms_master_key_id: None })}];
+        let pber = PutBucketEncryptionRequest{ bucket:bucket.to_string(), server_side_encryption_configuration:ServerSideEncryptionConfiguration{rules:sse_rules_vector} };
+        let sse_default_result = s3_client.put_bucket_encryption(pber).await;
+        match sse_default_result {
+          Ok(r)=>{
+            println!("bucket {} has had default encryption applied\n{:#?}",bucket,r);
+            has_encryption_rule(s3_client, bucket).await;
+          },
+          Err(e)=>{ println!("bucket {} has an error\n{:#?}",bucket,e)},
+          _=>{ println!("Something unexpected happened");},
+        }
+      }
+
+  }
+  
+  
   pub fn print_buckets(){
    
     for (_name,bucket_meta) in BUCKET_LIST.lock().unwrap().iter(){
@@ -313,6 +412,8 @@ mod tests {
   async fn test_encryption_policy_exists(){
     let bn = setup_bucket().await;
     let sse = sse_policy_template().unwrap();
+    apply_encryption_rule( &S3_CLIENT ,&bn, &sse).await;
+    println!("Default encryption rule to be applied\n{}",sse );
     assert_eq!(true,true);
     teardown_bucket(&bn).await;
   }
@@ -344,7 +445,7 @@ mod tests {
 
   }
 
-
+  
 
   async fn setup_bucket()->String{
     let my_uuid = Uuid::new_v4();
@@ -410,50 +511,9 @@ mod tests {
  
   }
 
-  fn transit_policy_template(bucket:&String)->Result<String, Box<dyn Error>>{
-    let mut reg = Handlebars::new();
-    let default_transit_policy = r###"
-    {
-      "Id": "ExamplePolicy",
-      "Version": "2012-10-17",
-      "Statement": [
-        {
-          "Sid": "AllowSSLRequestsOnly",
-          "Action": "s3:*",
-          "Effect": "Deny",
-          "Resource": [
-            "arn:aws:s3:::{{bucket}}",
-            "arn:aws:s3:::{{bucket}}/*"
-          ],
-          "Condition": {
-             "Bool": {
-              "aws:SecureTransport": "false"
-            }
-          },
-          "Principal": "*"
-        }
-      ]
-    }
-    "###;
-    // render without register
-    
-    let result = reg.render_template(default_transit_policy, &json!({"bucket": bucket}))?;
-    Ok(result)
-  }
+
 
  
-  fn sse_policy_template()->Result<String, Box<dyn Error>>{
-    let default_sse_policy = r###"
-  <ServerSideEncryptionConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
-    <Rule>
-       <ApplyServerSideEncryptionByDefault>
-          <SSEAlgorithm>AES256</SSEAlgorithm>
-       </ApplyServerSideEncryptionByDefault>
-    </Rule>
- </ServerSideEncryptionConfiguration>"###;
-    
-    Ok(String::from(default_sse_policy))
-
-  }
+  
 
 }
