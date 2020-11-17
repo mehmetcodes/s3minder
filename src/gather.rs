@@ -389,9 +389,7 @@ use tokio_util::codec::{BytesCodec, FramedRead};
   #[macro_use]
   use serde_json::json;
   use log::*;
-  use bytes::BytesMut;
-  use futures_util::TryStreamExt;
-  use futures_util::TryFutureExt;
+
 
 
   lazy_static! {
@@ -403,10 +401,18 @@ use tokio_util::codec::{BytesCodec, FramedRead};
   #[actix_rt::test]
   async fn test_copy(){
       let bn = setup_bucket().await;
-      create_objects(&bn).await;
+      create_objects(&bn,Some(1) ).await;
       assert_eq!(true,true);
       teardown_bucket(&bn).await;
+  }
 
+  #[actix_rt::test]
+  #[ignore]
+  async fn test_volume_copy(){
+    let bn = setup_bucket().await;
+    create_objects(&bn,Some(1001) ).await;
+    assert_eq!(true,true);
+    teardown_bucket(&bn).await;
   }
 
   #[actix_rt::test]
@@ -459,11 +465,28 @@ use tokio_util::codec::{BytesCodec, FramedRead};
   }
   
   /// This functions purpose is to create a bunch of objects for a bucket for testing purposes
-  async fn create_objects(bn:&String){
+  async fn create_objects(bn:&String,n:Option<i32>){
     let mut file = File::open("test/fine.jpg").unwrap();
     let mut buf:Vec<u8> = vec![];
     file.read_to_end(&mut buf);
-    save("test",bn,&S3_CLIENT,buf ).await;
+    let x = n.unwrap_or(1);
+    loop{
+      let ref mut muty = LOCK.try_lock();
+      match muty{
+        Ok(_) => {
+          for y in 0..x {
+            let fname = format!("test{}.jpg",y);
+            save(fname.as_str(),bn,&S3_CLIENT,buf.clone() ).await;
+          }
+          break;
+        },
+        _=>{
+          println!("try_lock failed for {} setup",bn);
+          delay_for(Duration::from_millis(1000)).await;
+        },   
+      };
+    }
+      
     list_items_in_bucket(&S3_CLIENT, bn);
   }
 
@@ -589,27 +612,20 @@ use tokio_util::codec::{BytesCodec, FramedRead};
       match contents1{
         Some(_)=> {
           for obj in contents1.unwrap().iter(){
-            unsafe{
-              if VERBOSE {
-                println!("{}", obj.key.as_ref().unwrap());
-              }
-            }
+            println!("{}", obj.key.as_ref().unwrap());
             //copy_object(client, bucket, obj.key.as_ref().unwrap()).await;
             let delete_result = client.delete_object( DeleteObjectRequest{ bucket:bucket.to_owned(), key: obj.key.clone().unwrap().to_string().to_owned(),..Default::default() }).await.expect("Failed to retrieve head for object");
-            unsafe{
-              if DEBUG {  
-                println!("{:#?}",delete_result);
-              }
-            }
+            println!("{:#?}",delete_result);
+              
+            
             
           }
         },
         _ =>{
-          unsafe{
-            if VERBOSE {
-              println!("No objects found");
-            }
-          }
+          
+              println!("No objects found to delete");
+            
+          
           
         }
       }
@@ -618,12 +634,7 @@ use tokio_util::codec::{BytesCodec, FramedRead};
 
           },
           _=>{
-            unsafe{
-              if DEBUG {
-                println!("No further pages of objects");
-              }
-            }
-           
+            println!("No further pages of objects");
             break;
           }
       }
