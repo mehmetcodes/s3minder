@@ -373,7 +373,8 @@ mod tests {
   extern crate tokio;
   extern crate tokio_util;
 
-  use tokio_util::codec::{BytesCodec, FramedRead};
+  use crate::gather::tests::rusoto_s3::DeleteObjectRequest;
+use tokio_util::codec::{BytesCodec, FramedRead};
   use rusoto_s3::PutObjectRequest;
   use std::error::Error;
   use rusoto_s3::DeleteBucketRequest;
@@ -543,6 +544,7 @@ mod tests {
         let ref mut muty = LOCK.try_lock();
         match muty{
           Ok(_) => {
+              delete_items_in_bucket(&S3_CLIENT, bucket_name).await;
               delete_bucket_result = S3_CLIENT.delete_bucket(DeleteBucketRequest{bucket:bucket_name.to_string() }).await;
               match delete_bucket_result {
                   Ok(result)=>{ println!("{:#?}",result)},
@@ -563,7 +565,76 @@ mod tests {
   }
 
 
+  pub async fn delete_items_in_bucket(client: &S3Client, bucket: &str) {
+    let mut list_request = ListObjectsRequest {
+        delimiter: Some("/".to_owned()),
+        bucket: bucket.to_owned(),
+        max_keys: Some(1000),
+        ..Default::default()
+    };
 
+    // Add error handling here, seems to crash in specific
+    let mut response = client
+          .list_objects(list_request.clone())
+          .await
+          .expect("list objects failed");
+      
+    loop{
+      unsafe{
+        if DEBUG {
+          println!("Args: bucket {}",bucket.to_owned());
+        }
+      }
+      let contents1 = response.contents;
+      match contents1{
+        Some(_)=> {
+          for obj in contents1.unwrap().iter(){
+            unsafe{
+              if VERBOSE {
+                println!("{}", obj.key.as_ref().unwrap());
+              }
+            }
+            //copy_object(client, bucket, obj.key.as_ref().unwrap()).await;
+            let delete_result = client.delete_object( DeleteObjectRequest{ bucket:bucket.to_owned(), key: obj.key.clone().unwrap().to_string().to_owned(),..Default::default() }).await.expect("Failed to retrieve head for object");
+            unsafe{
+              if DEBUG {  
+                println!("{:#?}",delete_result);
+              }
+            }
+            
+          }
+        },
+        _ =>{
+          unsafe{
+            if VERBOSE {
+              println!("No objects found");
+            }
+          }
+          
+        }
+      }
+      match response.next_marker {
+          Some(_)=>{
+
+          },
+          _=>{
+            unsafe{
+              if DEBUG {
+                println!("No further pages of objects");
+              }
+            }
+           
+            break;
+          }
+      }
+      list_request.marker = Some(response.next_marker.unwrap());
+      list_request.max_keys = Some(1000);
+      response = client
+          .list_objects(list_request.clone())
+          .await
+          .expect("list objects failed");
+    }
+  }
  
   
 
