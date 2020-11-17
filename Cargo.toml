@@ -12,7 +12,14 @@ rusoto_credential = "0.45.0"
 tokio = { version = "0.2", features = ["full"] }
 clap = "2"
 uuid = { version = "0.8", features = ["serde", "v4"] }
-actix-rt = "*"
 lazy_static = "1.4" 
 handlebars = "3.5"
 serde_json = "*"
+log = "*"
+tokio-util =  { version = "0.2", features = ["codec"] }
+futures-util = "0.3.1"
+bytes = "0.5.3"
+futures = "0.3.1"
+
+[dev-dependencies]
+actix-rt = "*"

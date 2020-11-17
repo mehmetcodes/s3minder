@@ -30,7 +30,7 @@ pub static mut DEBUG:bool = false;
 pub static mut VERBOSE:bool = false;
 
 lazy_static! {
-  static ref BUCKET_LIST:Mutex< HashMap<String,BucketMeta> > = Mutex::new( 
+  pub static ref BUCKET_LIST:Mutex< HashMap<String,BucketMeta> > = Mutex::new( 
                     HashMap::new()
                 );
     
@@ -131,7 +131,38 @@ async fn get_bucket_location(b:String) -> BucketMeta {
       }
       return meta_bucket
     }
-    
+
+pub async fn has_bucket_lifecycle( s3_client:&S3Client,bucket:&String )->bool{
+  let result = s3_client.get_bucket_lifecycle( GetBucketLifecycleRequest { bucket: bucket.to_string() } ).await; 
+  let mut returnvar:bool = false;
+  match result{
+    Ok(r) => { 
+      { 
+        unsafe{
+          if DEBUG {
+              println!("Rules {:?}",r.rules );
+          }
+        }
+      }
+      returnvar = true;
+    },
+    Err(e) => { 
+      if  e.to_string().contains("<Code>NoSuchLifecycleConfiguration</Code>")  { 
+        unsafe{
+          if DEBUG {
+              println!("We found no lifecycle configruation for the bucket {}",bucket.to_string());
+          }
+        }
+        returnvar = false;
+      }
+      else{
+        println!("Got some other error asking for the lifecylce {}",e);
+        returnvar = false;
+      }
+    }
+  }  
+  returnvar
+}
 
 /// # get_buckets - gets all buckets and metadata
 /// Connects to the UsWest1 Region, not for any particular reason
@@ -142,38 +173,12 @@ pub async fn get_buckets(){
     let resp = resp.unwrap();
     let mut vec = Vec::<BucketMeta>::new();
     for bucket in resp.buckets.unwrap().iter() {
-      let meta_bucket = get_bucket_location(bucket.name.clone().unwrap()).await;
+      let bkt:String = bucket.name.clone().unwrap();
+      let mut meta_bucket = get_bucket_location(bucket.name.clone().unwrap()).await;
+      meta_bucket.contains_lifecycle = has_bucket_lifecycle(&s3_client, &bkt).await;
+      meta_bucket.default_encryption = has_encryption_rule(&s3_client, &bkt).await;
       vec.push( meta_bucket );
-      let result = s3_client.get_bucket_lifecycle( GetBucketLifecycleRequest { bucket: bucket.name.clone().unwrap() } ).await; 
-      match result{
-        Ok(r) => { 
-          { 
-            unsafe{
-              if DEBUG {
-                  println!("Rules {:?}",r.rules );
-              }
-            }
-          }
-          let mut update_meta= vec.pop().unwrap();
-          update_meta.contains_lifecycle = true;
-          vec.push(update_meta);
-        },
-        Err(e) => { 
-          if  e.to_string().contains("<Code>NoSuchLifecycleConfiguration</Code>")  { 
-            unsafe{
-              if DEBUG {
-                  println!("We found no lifecycle configruation for the bucket {}",bucket.name.as_ref().unwrap());
-              }
-            }
-            let mut update_meta= vec.pop().unwrap();
-            update_meta.contains_lifecycle = false;
-            vec.push(update_meta);
-          }
-          else{
-            println!("Got some other error asking for the lifecylce {}",e);
-          }
-        }
-      }  
+       
     }
     for bucket_meta in vec.iter(){
          unsafe{
@@ -243,7 +248,7 @@ pub async fn get_buckets(){
     } 
   }
 
-  async fn list_items_in_bucket(client: &S3Client, bucket: &str) {
+  pub async fn list_items_in_bucket(client: &S3Client, bucket: &str) {
     let mut list_request = ListObjectsRequest {
         delimiter: Some("/".to_owned()),
         bucket: bucket.to_owned(),
@@ -365,7 +370,11 @@ mod tests {
   extern crate uuid;
   extern crate handlebars;
   extern crate serde_json;
+  extern crate tokio;
+  extern crate tokio_util;
 
+  use tokio_util::codec::{BytesCodec, FramedRead};
+  use rusoto_s3::PutObjectRequest;
   use std::error::Error;
   use rusoto_s3::DeleteBucketRequest;
   use rusoto_s3::CreateBucketRequest;
@@ -374,8 +383,15 @@ mod tests {
   use std::sync::Mutex;
   use tokio::time::{delay_for, Duration};
   use handlebars::Handlebars;
+  use std::fs::File;
+  use std::io::prelude::*;
   #[macro_use]
   use serde_json::json;
+  use log::*;
+  use bytes::BytesMut;
+  use futures_util::TryStreamExt;
+  use futures_util::TryFutureExt;
+
 
   lazy_static! {
 
@@ -386,7 +402,7 @@ mod tests {
   #[actix_rt::test]
   async fn test_copy(){
       let bn = setup_bucket().await;
-      create_objects().await;
+      create_objects(&bn).await;
       assert_eq!(true,true);
       teardown_bucket(&bn).await;
 
@@ -440,9 +456,14 @@ mod tests {
     assert_eq!(true,true);
     teardown_bucket(&bn).await;
   }
+  
   /// This functions purpose is to create a bunch of objects for a bucket for testing purposes
-  async fn create_objects(){
-
+  async fn create_objects(bn:&String){
+    let mut file = File::open("test/fine.jpg").unwrap();
+    let mut buf:Vec<u8> = vec![];
+    file.read_to_end(&mut buf);
+    save("test",bn,&S3_CLIENT,buf ).await;
+    list_items_in_bucket(&S3_CLIENT, bn);
   }
 
   
@@ -484,7 +505,37 @@ mod tests {
 
   }
    
-  
+  async fn save(
+      name: &str,
+      bucket: &str,
+      s3_client:&S3Client,
+      buf: Vec<u8>,
+  ){
+      let put = PutObjectRequest {
+          bucket: bucket.to_owned(),
+          key: format!("{}", name),
+          body: Some(buf.into()),
+          ..Default::default()
+      };
+      let name = name.to_owned();
+      let bucket = bucket.to_owned();
+      let res = s3_client.put_object(put).await;
+      match res{
+        Ok(r)=>{
+            info!(
+              "uploaded {} to {} with version_id: {}",
+              name,
+              bucket,
+              r.version_id.as_deref().unwrap_or_else(|| "-"),
+          );
+          println!("{:#?}",r);
+        },
+        Err(r)=>{
+          println!("{:#?}",r);
+        },
+      };
+          
+  }
 
   async fn teardown_bucket(bucket_name: &String){
       let delete_bucket_result;
