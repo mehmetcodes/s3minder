@@ -1,3 +1,4 @@
+#[macro_use] extern crate serde_derive;
 extern crate rusoto_core;
 extern crate rusoto_s3;
 extern crate rusoto_credential;

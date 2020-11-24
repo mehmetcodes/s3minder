@@ -5,35 +5,37 @@ extern crate lazy_static;
 extern crate handlebars;
 extern crate serde_json;
 
+extern crate csv;
 
-use rusoto_s3::ServerSideEncryptionConfiguration;
-use rusoto_s3::ServerSideEncryptionRule;
-use rusoto_s3::ServerSideEncryptionByDefault;
-use rusoto_s3::PutBucketEncryptionRequest;
-use rusoto_s3::GetBucketEncryptionRequest;
+
+
+use std::fs::File;
 use std::error::Error;
 use handlebars::Handlebars;
-use rusoto_s3::{GetBucketLifecycleRequest,GetBucketLocationRequest,HeadObjectRequest,CopyObjectRequest,ListObjectsRequest};
+use rusoto_s3::{S3, S3Client, ServerSideEncryptionConfiguration, ServerSideEncryptionRule, ServerSideEncryptionByDefault, 
+                PutBucketEncryptionRequest, GetBucketEncryptionRequest, GetBucketLifecycleRequest,GetBucketLocationRequest,
+                HeadObjectRequest,CopyObjectRequest,ListObjectsRequest,GetBucketWebsiteRequest };
 use rusoto_core::{Region};
-use rusoto_s3::{ S3, S3Client};
-use std::fmt;
-use std::collections::HashMap;
-use std::sync::Mutex;
+use std::{fmt,collections::HashMap,sync::Mutex,fs::OpenOptions};
 use lazy_static::lazy_static;
+use csv::{Writer,Reader};
 #[macro_use]
 use serde_json::json;
+//use csv::{Writer,Reader};
 
 /// Sets debug printouts to give details  
 pub static mut DEBUG:bool = false;
 
 /// Sets verbose printouts to give details about the results
 pub static mut VERBOSE:bool = false;
+  
+
 
 lazy_static! {
   pub static ref BUCKET_LIST:Mutex< HashMap<String,BucketMeta> > = Mutex::new( 
                     HashMap::new()
                 );
-    
+
 }
 
 
@@ -90,16 +92,33 @@ pub fn sse_policy_template()->Result<String, Box<dyn Error>>{
 
 
 
-#[derive(Debug,Clone,Default)]
+#[derive(Debug,Clone,Default,Serialize)]
 pub struct BucketMeta {
   bucket_name: String,
   bucket_endpoint: String,
   contains_lifecycle: bool,
   default_encryption: bool,
   contains_transit_policy:bool,
+  web_bucket:bool,
+  objects_checked:bool,
+
 }
 
-
+fn serialize_bucket_meta(){
+  let file = OpenOptions::new()
+                                                              .write(true)
+                                                              .truncate(true)
+                                                              .create(true)
+                                                              .open("s3inventory.csv")
+                                                              .unwrap();
+  let mut csvwriter:csv::Writer<std::fs::File> = csv::WriterBuilder::new()
+  .has_headers(true).from_writer( file );
+  
+  for b in BUCKET_LIST.lock().unwrap().values(){
+    let result = csvwriter.serialize(b);
+    match result { Ok(r)=>{ println!("{:#?}",r); },Err(r)=>{ println!("{:#?}",r);   } };
+  }
+}
 
 impl fmt::Display for BucketMeta {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -112,7 +131,7 @@ impl fmt::Display for BucketMeta {
 async fn get_bucket_location(b:String) -> BucketMeta {
     let s3_client = S3Client::new(Region::UsWest1);   
     let endpoint_l = s3_client.get_bucket_location( GetBucketLocationRequest{ bucket: b.clone() } ).await;
-    let mut meta_bucket:BucketMeta = BucketMeta{ bucket_name: b.clone(), bucket_endpoint: "Error".to_string(), contains_lifecycle: false, default_encryption: false, contains_transit_policy:false};
+    let mut meta_bucket:BucketMeta = BucketMeta{ bucket_name: b.clone(), bucket_endpoint: "Error".to_string(), contains_lifecycle: false, default_encryption: false, contains_transit_policy:false,  web_bucket:false, objects_checked:false};
     
     match endpoint_l{
         Ok(val) =>{
@@ -122,6 +141,8 @@ async fn get_bucket_location(b:String) -> BucketMeta {
             contains_lifecycle: false,
             default_encryption: false,
             contains_transit_policy: false,
+            web_bucket:false, 
+            objects_checked:false,
             };
         },
         Err(e) => {
@@ -177,9 +198,12 @@ pub async fn get_buckets(){
       let mut meta_bucket = get_bucket_location(bucket.name.clone().unwrap()).await;
       meta_bucket.contains_lifecycle = has_bucket_lifecycle(&s3_client, &bkt).await;
       meta_bucket.default_encryption = has_encryption_rule(&s3_client, &bkt).await;
+      meta_bucket.web_bucket = is_web_bucket(&s3_client,&bkt).await;
+      meta_bucket.objects_checked = false;
       vec.push( meta_bucket );
        
     }
+   
     for bucket_meta in vec.iter(){
          unsafe{
           if VERBOSE{
@@ -189,9 +213,9 @@ pub async fn get_buckets(){
           BUCKET_LIST.lock().unwrap().insert(bucket_meta.bucket_name.clone() ,bucket_meta.clone()); 
         
         
-         list_items_in_bucket(&s3_client, bucket_meta.bucket_name.as_str() ).await;
+        list_items_in_bucket(&s3_client, bucket_meta.bucket_name.as_str() ).await;
     }
-    
+    serialize_bucket_meta();
    
   }
 
@@ -216,6 +240,29 @@ pub async fn get_buckets(){
         },
       }
   }
+
+  pub async fn is_web_bucket( s3_client:&S3Client ,bucket:&String)->bool{
+    let encryption_result = s3_client.get_bucket_website( GetBucketWebsiteRequest{ bucket: bucket.to_string() } ).await;
+      match encryption_result{
+        Ok(e)=>{ println!("{:#?}",e); 
+          //println!("Rules {:?}",e.rules );
+          true
+        },
+        Err(e)=>{
+          if  e.to_string().contains("<Code>NoSuchWebsiteConfiguration</Code>")  { 
+            false
+          }else{
+            println!("{:#?}",e); 
+            false
+          }
+        },
+        _=>{ 
+          println!("Unknown issue getting website configuration");
+          false
+        },
+      }
+  }
+
 
   pub async fn apply_encryption_rule( s3_client:&S3Client ,bucket:&String, rule:&String){
       if has_encryption_rule( s3_client, bucket ).await {
@@ -526,7 +573,7 @@ use tokio_util::codec::{BytesCodec, FramedRead};
     
     
   async fn add_policy_to_bucket(){
-
+  
   }
    
   async fn save(
