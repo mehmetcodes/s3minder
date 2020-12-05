@@ -1,3 +1,5 @@
+
+
 extern crate rusoto_core;
 extern crate rusoto_s3;
 extern crate rusoto_credential;
@@ -104,6 +106,8 @@ pub struct BucketMeta {
 
 }
 
+
+
 fn serialize_bucket_meta(){
   let file = OpenOptions::new()
                                                               .write(true)
@@ -119,6 +123,10 @@ fn serialize_bucket_meta(){
     match result { Ok(r)=>{ println!("{:#?}",r); },Err(r)=>{ println!("{:#?}",r);   } };
   }
 }
+
+
+
+
 
 impl fmt::Display for BucketMeta {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -295,6 +303,9 @@ pub async fn get_buckets(){
     } 
   }
 
+  
+
+
   pub async fn list_items_in_bucket(client: &S3Client, bucket: &str) {
     let mut list_request = ListObjectsRequest {
         delimiter: Some("/".to_owned()),
@@ -411,6 +422,9 @@ pub async fn get_buckets(){
         .expect("Couldn't copy object");
     println!("{:#?}", result);
   }
+
+
+
 #[cfg(test)]
 mod tests {
 

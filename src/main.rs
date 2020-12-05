@@ -8,8 +8,11 @@ extern crate clap;
 //use std::default::Default;
 use tokio;
 mod gather;
+mod remediate;
 use clap::{Arg, App, SubCommand};
-
+use gather::*;
+use remediate::*;
+use std::default::Default;
 
 
 #[tokio::main]
@@ -58,6 +61,7 @@ async fn main() {
                                 .help("Set debug output")
                                 .takes_value(false))                        
         .get_matches(); 
+
   let config = matches.value_of("config").unwrap_or("");
   let repair = matches.occurrences_of("repair");
   let debug  = matches.occurrences_of("d");
@@ -93,7 +97,9 @@ async fn main() {
       println!("Will attempt to use {} as a CSV list of buckets",config); 
     }
   }
-  gather::print_buckets();
+  print_buckets();
+  let remediation_options:S3RemediateOptions = Default::default();
+  remediate::remediate_buckets( remediation_options  );
 }
 
 
