@@ -96,13 +96,13 @@ pub fn sse_policy_template()->Result<String, Box<dyn Error>>{
 
 #[derive(Debug,Clone,Default,Serialize)]
 pub struct BucketMeta {
-  bucket_name: String,
-  bucket_endpoint: String,
-  contains_lifecycle: bool,
-  default_encryption: bool,
-  contains_transit_policy:bool,
-  web_bucket:bool,
-  objects_checked:bool,
+  pub bucket_name: String,
+  pub bucket_endpoint: String,
+  pub contains_lifecycle: bool,
+  pub default_encryption: bool,
+  pub contains_transit_policy:bool,
+  pub web_bucket:bool,
+  pub objects_checked:bool,
 
 }
 
@@ -227,10 +227,12 @@ pub async fn get_buckets(){
    
   }
 
+  
   pub async fn has_encryption_rule( s3_client:&S3Client ,bucket:&String)->bool{
     let encryption_result = s3_client.get_bucket_encryption( GetBucketEncryptionRequest{ bucket: bucket.to_string() } ).await;
       match encryption_result{
-        Ok(e)=>{ println!("{:#?}",e); 
+        Ok(e)=>{ 
+          println!("{:#?}",e); 
           //println!("Rules {:?}",e.rules );
           true
         },
@@ -435,7 +437,7 @@ mod tests {
   extern crate tokio_util;
 
   use crate::gather::tests::rusoto_s3::DeleteObjectRequest;
-use tokio_util::codec::{BytesCodec, FramedRead};
+  use tokio_util::codec::{BytesCodec, FramedRead};
   use rusoto_s3::PutObjectRequest;
   use std::error::Error;
   use rusoto_s3::DeleteBucketRequest;

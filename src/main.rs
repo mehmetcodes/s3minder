@@ -84,22 +84,26 @@ async fn main() {
     }
   
   }
-
+  let remediation_options:S3RemediateOptions = Default::default();
   match config {
     ""=> { 
       if debug > 0 {
         println!("{}",repair);
+        
       }
         gather::get_buckets().await;
+        if repair > 0 {
+          remediate::remediate_buckets( remediation_options  );
+        }
       },
     _=>{ 
       println!("{}",repair);
       println!("Will attempt to use {} as a CSV list of buckets",config); 
     }
   }
-  print_buckets();
-  let remediation_options:S3RemediateOptions = Default::default();
-  remediate::remediate_buckets( remediation_options  );
+  //print_buckets();
+  
+  
 }
 
 
