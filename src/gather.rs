@@ -196,8 +196,8 @@ pub async fn has_bucket_lifecycle( s3_client:&S3Client,bucket:&String )->bool{
 /// # get_buckets - gets all buckets and metadata
 /// Connects to the UsWest1 Region, not for any particular reason
 /// Then requests the list of buckets, which should get buckets from all regions
-pub async fn get_buckets(){
-    let s3_client = S3Client::new(Region::UsWest1);
+pub async fn get_buckets(s3_client:&S3Client){
+    
     let resp = s3_client.list_buckets().await;
     let resp = resp.unwrap();
     let mut vec = Vec::<BucketMeta>::new();
@@ -274,28 +274,7 @@ pub async fn get_buckets(){
   }
 
 
-  pub async fn apply_encryption_rule( s3_client:&S3Client ,bucket:&String, rule:&String){
-      if has_encryption_rule( s3_client, bucket ).await {
-        unsafe{
-          if DEBUG {
-            println!("{} already has an encryption rule",bucket);
-          }
-        }
-      }else{
-        let sse_rules_vector = vec![ServerSideEncryptionRule{  apply_server_side_encryption_by_default:Some(ServerSideEncryptionByDefault{ sse_algorithm:"AES256".to_string(),kms_master_key_id: None })}];
-        let pber = PutBucketEncryptionRequest{ bucket:bucket.to_string(), server_side_encryption_configuration:ServerSideEncryptionConfiguration{rules:sse_rules_vector} };
-        let sse_default_result = s3_client.put_bucket_encryption(pber).await;
-        match sse_default_result {
-          Ok(r)=>{
-            println!("bucket {} has had default encryption applied\n{:#?}",bucket,r);
-            has_encryption_rule(s3_client, bucket).await;
-          },
-          Err(e)=>{ println!("bucket {} has an error\n{:#?}",bucket,e)},
-          _=>{ println!("Something unexpected happened");},
-        }
-      }
-
-  }
+  
   
   
   pub fn print_buckets(){

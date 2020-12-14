@@ -13,7 +13,8 @@ use clap::{Arg, App, SubCommand};
 use gather::*;
 use remediate::*;
 use std::default::Default;
-
+use rusoto_s3::{S3, S3Client };
+use rusoto_core::{Region};
 
 #[tokio::main]
 async fn main() {
@@ -91,9 +92,10 @@ async fn main() {
         println!("{}",repair);
         
       }
-        gather::get_buckets().await;
+        let s3_client = S3Client::new(Region::UsWest1);
+        gather::get_buckets(&s3_client).await;
         if repair > 0 {
-          remediate::remediate_buckets( remediation_options  );
+          remediate::remediate_buckets( &s3_client, remediation_options  ).await;
         }
       },
     _=>{ 
