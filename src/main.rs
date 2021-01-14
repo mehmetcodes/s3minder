@@ -15,9 +15,14 @@ use remediate::*;
 use std::default::Default;
 use rusoto_s3::{S3, S3Client };
 use rusoto_core::{Region};
+use tracing_subscriber;
+use tracing::{event, span, Level,info};
+use std::io;
 
 #[tokio::main]
 async fn main() {
+  tracing_subscriber::fmt::init();
+  event!(Level::INFO, "something happened");
   let matches = App::new("S3minder")
        .version("0.1")
        .about("Minds your S3 buckets to ensure encryption!")
@@ -71,20 +76,19 @@ async fn main() {
   if repair == 0 {
     println!("This is a dry run which will update you on bucket state.\nIf you would like to apply policy, use the --repair / -r option\n\n");
   }
-
-  unsafe{
-
+ 
+        
     if debug > 0 {
-      gather::DEBUG = true;
+      //gather::DEBUG = true;
       println!("debug flag activated")
     }
 
     if verbose > 0 {
-      gather::VERBOSE = true;
+      //gather::VERBOSE = true;
       println!("verbose flag activated")
     }
   
-  }
+
   let remediation_options:S3RemediateOptions = Default::default();
   match config {
     ""=> { 
@@ -104,7 +108,7 @@ async fn main() {
     }
   }
   //print_buckets();
-  
+  tracing::info!("Program complete");
   
 }
 

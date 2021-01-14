@@ -23,6 +23,7 @@ use lazy_static::lazy_static;
 use csv::{Writer,Reader};
 #[macro_use]
 use serde_json::json;
+use tracing::{debug, error, info, span, warn, Level};
 //use csv::{Writer,Reader};
 
 /// Sets debug printouts to give details  
