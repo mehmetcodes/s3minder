@@ -4,6 +4,7 @@ extern crate rusoto_s3;
 extern crate rusoto_credential;
 extern crate rusoto_dynamodb;
 extern crate clap;
+extern crate chrono;
 
 //use std::default::Default;
 use tokio;
@@ -15,14 +16,40 @@ use remediate::*;
 use std::default::Default;
 use rusoto_s3::{S3, S3Client };
 use rusoto_core::{Region};
-use tracing_subscriber;
-use tracing::{event, span, Level,info};
-use std::io;
+use log::{trace,info, warn,debug,error,Record, Level, Metadata,SetLoggerError, LevelFilter};
+use chrono::{ Utc};
+
+
+struct SimpleLogger;
+
+impl log::Log for SimpleLogger {
+    fn enabled(&self, metadata: &Metadata) -> bool {
+        metadata.level() <= log::max_level() && ( metadata.target().contains("s3minder") ) 
+    }
+
+    fn log(&self, record: &Record) {
+        if self.enabled(record.metadata()) {
+          println!("{}:{} -- {} - {}",
+          record.level(),
+          record.target(),
+          Utc::now(),
+          record.args());
+        }
+    }
+
+    fn flush(&self) {}
+}
+
+static LOGGER: SimpleLogger = SimpleLogger;
+
+pub fn init(lev:LevelFilter) -> Result<(), SetLoggerError> {
+  log::set_logger(&LOGGER)
+      .map(|()| log::set_max_level(lev))
+}
 
 #[tokio::main]
 async fn main() {
-  tracing_subscriber::fmt::init();
-  event!(Level::INFO, "something happened");
+  
   let matches = App::new("S3minder")
        .version("0.1")
        .about("Minds your S3 buckets to ensure encryption!")
@@ -72,30 +99,39 @@ async fn main() {
   let repair = matches.occurrences_of("repair");
   let debug  = matches.occurrences_of("d");
   let verbose  = matches.occurrences_of("v");
+  if verbose > 0 {
+    let result = init(LevelFilter::Trace);
+    match result {
+      Ok(e)=>{ 
+        info!("verbose flag activated {}",LevelFilter::Trace);
+      }
+      Err(_)=>{}
+    }
+    
+  }else if debug > 0 {
+    //gather::DEBUG = true;
+    init(LevelFilter::Debug).expect("Logging init broken");
+    info!("debug flag activated")
+  }else{
+    init(LevelFilter::Info).expect("Logging init broken");
+    info!("verbose {}",verbose);
+  }
+
+
 
   if repair == 0 {
-    println!("This is a dry run which will update you on bucket state.\nIf you would like to apply policy, use the --repair / -r option\n\n");
+    info!("This is a dry run which will update you on bucket state.\nIf you would like to apply policy, use the --repair / -r option");
   }
- 
-        
-    if debug > 0 {
-      //gather::DEBUG = true;
-      println!("debug flag activated")
-    }
 
-    if verbose > 0 {
-      //gather::VERBOSE = true;
-      println!("verbose flag activated")
-    }
+    
   
-
   let remediation_options:S3RemediateOptions = Default::default();
   match config {
     ""=> { 
-      if debug > 0 {
-        println!("{}",repair);
+      
+        debug!("Flag setting: {}",repair);
         
-      }
+      
         let s3_client = S3Client::new(Region::UsWest1);
         gather::get_buckets(&s3_client).await;
         if repair > 0 {
@@ -103,12 +139,14 @@ async fn main() {
         }
       },
     _=>{ 
-      println!("{}",repair);
-      println!("Will attempt to use {} as a CSV list of buckets",config); 
+      info!("Config: {}",repair);
+      info!("Config: Will attempt to use {} as a CSV list of buckets",config); 
     }
   }
-  //print_buckets();
-  tracing::info!("Program complete");
+  info!("Main: Program complete");
+  debug!("Debug is on");
+  trace!("Trace is on");
+  info!("{}",log::max_level());
   
 }
 

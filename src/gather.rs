@@ -23,14 +23,11 @@ use lazy_static::lazy_static;
 use csv::{Writer,Reader};
 #[macro_use]
 use serde_json::json;
-use tracing::{debug, error, info, span, warn, Level};
+use log::{trace,info, warn,debug,error};
+
 //use csv::{Writer,Reader};
 
-/// Sets debug printouts to give details  
-pub static mut DEBUG:bool = false;
 
-/// Sets verbose printouts to give details about the results
-pub static mut VERBOSE:bool = false;
   
 
 
@@ -121,7 +118,7 @@ fn serialize_bucket_meta(){
   
   for b in BUCKET_LIST.lock().unwrap().values(){
     let result = csvwriter.serialize(b);
-    match result { Ok(r)=>{ println!("{:#?}",r); },Err(r)=>{ println!("{:#?}",r);   } };
+    match result { Ok(r)=>{ trace!("{:#?}",r); },Err(r)=>{ error!("{:#?}",r);   } };
   }
 }
 
@@ -155,7 +152,7 @@ async fn get_bucket_location(b:String) -> BucketMeta {
             };
         },
         Err(e) => {
-          eprintln!("We got an error{}",e);
+          error!("We got an error{}",e);
         }
         
       }
@@ -168,25 +165,17 @@ pub async fn has_bucket_lifecycle( s3_client:&S3Client,bucket:&String )->bool{
   match result{
     Ok(r) => { 
       { 
-        unsafe{
-          if DEBUG {
-              println!("Rules {:?}",r.rules );
-          }
-        }
+        debug!("Rules {:?}",r.rules );
       }
       returnvar = true;
     },
     Err(e) => { 
       if  e.to_string().contains("<Code>NoSuchLifecycleConfiguration</Code>")  { 
-        unsafe{
-          if DEBUG {
-              println!("We found no lifecycle configruation for the bucket {}",bucket.to_string());
-          }
-        }
+        debug!("We found no lifecycle configruation for the bucket {}",bucket.to_string());
         returnvar = false;
       }
       else{
-        println!("Got some other error asking for the lifecylce {}",e);
+        error!("Got some other error asking for the lifecylce {}",e);
         returnvar = false;
       }
     }
@@ -214,12 +203,8 @@ pub async fn get_buckets(s3_client:&S3Client){
     }
    
     for bucket_meta in vec.iter(){
-         unsafe{
-          if VERBOSE{
-            println!("{}", bucket_meta);
-          }
-        }
-          BUCKET_LIST.lock().unwrap().insert(bucket_meta.bucket_name.clone() ,bucket_meta.clone()); 
+        trace!("{}", bucket_meta);
+        BUCKET_LIST.lock().unwrap().insert(bucket_meta.bucket_name.clone() ,bucket_meta.clone()); 
         
         
         list_items_in_bucket(&s3_client, bucket_meta.bucket_name.as_str() ).await;
@@ -233,20 +218,19 @@ pub async fn get_buckets(s3_client:&S3Client){
     let encryption_result = s3_client.get_bucket_encryption( GetBucketEncryptionRequest{ bucket: bucket.to_string() } ).await;
       match encryption_result{
         Ok(e)=>{ 
-          println!("{:#?}",e); 
-          //println!("Rules {:?}",e.rules );
+          debug!("{:#?}",e); 
           true
         },
         Err(e)=>{
           if  e.to_string().contains("<Code>ServerSideEncryptionConfigurationNotFoundError</Code>")  { 
             false
           }else{
-            println!("{:#?}",e); 
+            debug!("{:#?}",e); 
             false
           }
         },
         _=>{ 
-          println!("Unknown apply encryption rule issue getting encryption config");
+         warn!("Unknown apply encryption rule issue getting encryption config");
           false
         },
       }
@@ -255,20 +239,20 @@ pub async fn get_buckets(s3_client:&S3Client){
   pub async fn is_web_bucket( s3_client:&S3Client ,bucket:&String)->bool{
     let encryption_result = s3_client.get_bucket_website( GetBucketWebsiteRequest{ bucket: bucket.to_string() } ).await;
       match encryption_result{
-        Ok(e)=>{ println!("{:#?}",e); 
-          //println!("Rules {:?}",e.rules );
+        Ok(e)=>{ 
+          trace!("is_web_bucket: {:#?}",e); 
           true
         },
         Err(e)=>{
           if  e.to_string().contains("<Code>NoSuchWebsiteConfiguration</Code>")  { 
             false
           }else{
-            println!("{:#?}",e); 
+            debug!("{:#?}",e); 
             false
           }
         },
         _=>{ 
-          println!("Unknown issue getting website configuration");
+          error!("Unknown issue getting website configuration");
           false
         },
       }
@@ -279,9 +263,9 @@ pub async fn get_buckets(s3_client:&S3Client){
   
   
   pub fn print_buckets(){
-   
+    trace!("Printing all buckets");
     for (_name,bucket_meta) in BUCKET_LIST.lock().unwrap().iter(){
-      println!("{}", bucket_meta);
+     trace!("{}", bucket_meta);
     } 
   }
 
@@ -303,51 +287,33 @@ pub async fn get_buckets(s3_client:&S3Client){
           .expect("list objects failed");
       
     loop{
-      unsafe{
-        if DEBUG {
-          println!("Args: bucket {}",bucket.to_owned());
-        }
-      }
+      debug!("Args: bucket {}",bucket.to_owned());
       let contents1 = response.contents;
       match contents1{
         Some(_)=> {
           for obj in contents1.unwrap().iter(){
-            unsafe{
-              if VERBOSE {
-                println!("{}", obj.key.as_ref().unwrap());
-              }
-            }
+            trace!("{}", obj.key.as_ref().unwrap());
+           
             //copy_object(client, bucket, obj.key.as_ref().unwrap()).await;
             let head_check_encryption = HeadObjectRequest{ bucket:bucket.to_owned(), key: obj.key.clone().unwrap().to_string().to_owned(),..Default::default() };
             let head_result =  client.head_object(head_check_encryption).await.expect("Failed to retrieve head for object");
-            unsafe{
-              if DEBUG {  
-                println!("{:#?}",head_result);
-              }
-            }
+            debug!("{:#?}",head_result);
+              
+            
             match head_result.ssekms_key_id{
               Some(key_id)=>{
-                unsafe{
-                  if VERBOSE {
-                    println!("Encrypted by KMS key {} {}",key_id,obj.key.clone().unwrap().as_str() );
-                  }
-                }
+                  trace!("Encrypted by KMS key {} {}",key_id,obj.key.clone().unwrap().as_str() );
               },
               _=>{
                  match head_result.server_side_encryption{
                    Some(algo)=>{
-                    unsafe{
-                      if VERBOSE {
-                        println!("Encrypted by SSE-C using {}",algo);
-                      }
-                    }
+                    
+                        trace!("Encrypted by SSE-C using {}",algo);
+                   
                    }
                    _=>{
-                    unsafe{
-                      if VERBOSE {
-                        println!("Not encrypted");
-                      }
-                    }
+                    trace!("Not encrypted");
+                    
                     
                    }
                  }
@@ -357,11 +323,9 @@ pub async fn get_buckets(s3_client:&S3Client){
           }
         },
         _ =>{
-          unsafe{
-            if VERBOSE {
-              println!("No objects found");
-            }
-          }
+          
+              trace!("No objects found");
+           
           
         }
       }
@@ -370,12 +334,7 @@ pub async fn get_buckets(s3_client:&S3Client){
 
           },
           _=>{
-            unsafe{
-              if DEBUG {
-                println!("No further pages of objects");
-              }
-            }
-           
+            debug!("No further pages of objects");
             break;
           }
       }
@@ -402,7 +361,7 @@ pub async fn get_buckets(s3_client:&S3Client){
         .copy_object(req)
         .await
         .expect("Couldn't copy object");
-    println!("{:#?}", result);
+    debug!("{:#?}", result);
   }
 
 

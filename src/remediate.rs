@@ -1,5 +1,5 @@
 use super::gather;
-use tracing::{debug, error, info, span, warn, Level};
+use log::{trace,info, warn,debug,error};
 use std::default::Default;
 use rusoto_s3::{S3, S3Client, ServerSideEncryptionConfiguration, ServerSideEncryptionRule, ServerSideEncryptionByDefault, 
   PutBucketEncryptionRequest, GetBucketEncryptionRequest, GetBucketLifecycleRequest,GetBucketLocationRequest,
@@ -39,11 +39,12 @@ pub async fn apply_sse_encryption_rule( s3_client:&S3Client ,bucket:&String){
   let sse_default_result = s3_client.put_bucket_encryption(pber).await;
   match sse_default_result {
     Ok(r)=>{
-      println!("bucket {} has had default encryption applied\n{:#?}",bucket,r);
+      info!("Default Encryption applied to bucket {}", bucket);
     },
-    Err(e)=>{ println!("bucket {} has an error\n{:#?}",bucket,e)},
-    _=>{ println!("Something unexpected happened");},
+    Err(e)=>{ error!("bucket {} has an error\n{:#?}",bucket,e)},
+    _=>{ error!("Something unexpected happened");},
   }
+  
 }
 
 pub async fn apply_default_kms_encryption_rule( s3_client:&S3Client ,bucket:&String ){
@@ -53,6 +54,8 @@ pub async fn apply_default_kms_encryption_rule( s3_client:&S3Client ,bucket:&Str
   
 
 pub async fn remediate_buckets( s3_client:&S3Client,remedy:S3RemediateOptions ){
+    let count = super::gather::BUCKET_LIST.lock().unwrap().values().len();
+    info!("Buckets found to determine remediation: {}",count);
     for b in super::gather::BUCKET_LIST.lock().unwrap().values(){
       if remedy.skipwebbuckets && !b.web_bucket && !b.default_encryption 
       { 
@@ -67,10 +70,9 @@ pub async fn remediate_buckets( s3_client:&S3Client,remedy:S3RemediateOptions ){
           }
            
         
-          //println!("Applied default encryption to non-web bucket {}",b.bucket_name);
+         
       }else{
-        println!("Skipped default encryption to bucket {}",b.bucket_name);
-        println!("because default_encryption: {} web_bucket {}",b.default_encryption,b.web_bucket);
+        info!("Encryption skipped: Skipped encryption for {:?} because default encryption: {}, web_bucket {}",b.bucket_name,b.default_encryption,b.web_bucket );
       }
       if remedy.applylifecycle {
         if !b.web_bucket && remedy.skipwebbuckets {
