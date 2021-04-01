@@ -6,6 +6,7 @@ extern crate rusoto_dynamodb;
 extern crate clap;
 extern crate chrono;
 
+
 //use std::default::Default;
 use tokio;
 mod gather;

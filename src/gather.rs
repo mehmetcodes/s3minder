@@ -1,19 +1,13 @@
-
-
 extern crate rusoto_core;
 extern crate rusoto_s3;
 extern crate rusoto_credential;
 extern crate lazy_static;
 extern crate handlebars;
 extern crate serde_json;
-
 extern crate csv;
-
-
 
 use std::fs::File;
 use std::error::Error;
-use handlebars::Handlebars;
 use rusoto_s3::{S3, S3Client, ServerSideEncryptionConfiguration, ServerSideEncryptionRule, ServerSideEncryptionByDefault, 
                 PutBucketEncryptionRequest, GetBucketEncryptionRequest, GetBucketLifecycleRequest,GetBucketLocationRequest,
                 HeadObjectRequest,CopyObjectRequest,ListObjectsRequest,GetBucketWebsiteRequest };
@@ -25,71 +19,11 @@ use csv::{Writer,Reader};
 use serde_json::json;
 use log::{trace,info, warn,debug,error};
 
-//use csv::{Writer,Reader};
-
-
-  
-
-
 lazy_static! {
   pub static ref BUCKET_LIST:Mutex< HashMap<String,BucketMeta> > = Mutex::new( 
                     HashMap::new()
                 );
-
 }
-
-
-
-///
-/// 
-/// 
-pub fn transit_policy_template(bucket:&String)->Result<String, Box<dyn Error>>{
-  let mut reg = Handlebars::new();
-  let default_transit_policy = r###"
-  {
-    "Id": "ExamplePolicy",
-    "Version": "2012-10-17",
-    "Statement": [
-      {
-        "Sid": "AllowSSLRequestsOnly",
-        "Action": "s3:*",
-        "Effect": "Deny",
-        "Resource": [
-          "arn:aws:s3:::{{bucket}}",
-          "arn:aws:s3:::{{bucket}}/*"
-        ],
-        "Condition": {
-           "Bool": {
-            "aws:SecureTransport": "false"
-          }
-        },
-        "Principal": "*"
-      }
-    ]
-  }
-  "###;
-  // render without register
-  
-  let result = reg.render_template(default_transit_policy, &json!({"bucket": bucket}))?;
-  Ok(result)
-}
-
-
-pub fn sse_policy_template()->Result<String, Box<dyn Error>>{
-  let default_sse_policy = r###"
-<ServerSideEncryptionConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
-  <Rule>
-     <ApplyServerSideEncryptionByDefault>
-        <SSEAlgorithm>AES256</SSEAlgorithm>
-     </ApplyServerSideEncryptionByDefault>
-  </Rule>
-</ServerSideEncryptionConfiguration>"###;
-  
-  Ok(String::from(default_sse_policy))
-
-}
-
-
 
 
 #[derive(Debug,Clone,Default,Serialize)]
@@ -101,7 +35,6 @@ pub struct BucketMeta {
   pub contains_transit_policy:bool,
   pub web_bucket:bool,
   pub objects_checked:bool,
-
 }
 
 
@@ -136,14 +69,14 @@ impl fmt::Display for BucketMeta {
 
 async fn get_bucket_location(b:String) -> BucketMeta {
     let s3_client = S3Client::new(Region::UsWest1);   
-    let endpoint_l = s3_client.get_bucket_location( GetBucketLocationRequest{ bucket: b.clone() } ).await;
+    let endpoint_l = s3_client.get_bucket_location( GetBucketLocationRequest{ bucket: b.clone(),..Default::default() } ).await;
     let mut meta_bucket:BucketMeta = BucketMeta{ bucket_name: b.clone(), bucket_endpoint: "Error".to_string(), contains_lifecycle: false, default_encryption: false, contains_transit_policy:false,  web_bucket:false, objects_checked:false};
     
     match endpoint_l{
         Ok(val) =>{
           meta_bucket = BucketMeta { 
             bucket_name: b.clone(),  
-            bucket_endpoint: ["",b.as_str(),".s3-",&(val.location_constraint.clone().unwrap()),".amazonaws.com"].join("").to_owned(), 
+            bucket_endpoint: ["",b.as_str(),".s3.amazonaws.com"].join("").to_owned(), 
             contains_lifecycle: false,
             default_encryption: false,
             contains_transit_policy: false,
@@ -160,7 +93,7 @@ async fn get_bucket_location(b:String) -> BucketMeta {
     }
 
 pub async fn has_bucket_lifecycle( s3_client:&S3Client,bucket:&String )->bool{
-  let result = s3_client.get_bucket_lifecycle( GetBucketLifecycleRequest { bucket: bucket.to_string() } ).await; 
+  let result = s3_client.get_bucket_lifecycle( GetBucketLifecycleRequest { bucket: bucket.to_string(),..Default::default() } ).await; 
   let mut returnvar:bool = false;
   match result{
     Ok(r) => { 
@@ -194,6 +127,7 @@ pub async fn get_buckets(s3_client:&S3Client){
     for bucket in resp.buckets.unwrap().iter() {
       let bkt:String = bucket.name.clone().unwrap();
       let mut meta_bucket = get_bucket_location(bucket.name.clone().unwrap()).await;
+      let bkte:String = meta_bucket.bucket_endpoint.clone();
       meta_bucket.contains_lifecycle = has_bucket_lifecycle(&s3_client, &bkt).await;
       meta_bucket.default_encryption = has_encryption_rule(&s3_client, &bkt).await;
       meta_bucket.web_bucket = is_web_bucket(&s3_client,&bkt).await;
@@ -215,7 +149,7 @@ pub async fn get_buckets(s3_client:&S3Client){
 
   
   pub async fn has_encryption_rule( s3_client:&S3Client ,bucket:&String)->bool{
-    let encryption_result = s3_client.get_bucket_encryption( GetBucketEncryptionRequest{ bucket: bucket.to_string() } ).await;
+    let encryption_result = s3_client.get_bucket_encryption( GetBucketEncryptionRequest{ bucket: bucket.to_string(),..Default::default() } ).await;
       match encryption_result{
         Ok(e)=>{ 
           debug!("{:#?}",e); 
@@ -237,7 +171,7 @@ pub async fn get_buckets(s3_client:&S3Client){
   }
 
   pub async fn is_web_bucket( s3_client:&S3Client ,bucket:&String)->bool{
-    let encryption_result = s3_client.get_bucket_website( GetBucketWebsiteRequest{ bucket: bucket.to_string() } ).await;
+    let encryption_result = s3_client.get_bucket_website( GetBucketWebsiteRequest{ bucket: bucket.to_string(),..Default::default() } ).await;
       match encryption_result{
         Ok(e)=>{ 
           trace!("is_web_bucket: {:#?}",e); 
@@ -257,10 +191,6 @@ pub async fn get_buckets(s3_client:&S3Client){
         },
       }
   }
-
-
-  
-  
   
   pub fn print_buckets(){
     trace!("Printing all buckets");
@@ -268,9 +198,6 @@ pub async fn get_buckets(s3_client:&S3Client){
      trace!("{}", bucket_meta);
     } 
   }
-
-  
-
 
   pub async fn list_items_in_bucket(client: &S3Client, bucket: &str) {
     let mut list_request = ListObjectsRequest {
@@ -283,86 +210,71 @@ pub async fn get_buckets(s3_client:&S3Client){
     // Add error handling here, seems to crash in specific
     let mut response = client
           .list_objects(list_request.clone())
-          .await
-          .expect("list objects failed");
-      
-    loop{
-      debug!("Args: bucket {}",bucket.to_owned());
-      let contents1 = response.contents;
-      match contents1{
-        Some(_)=> {
-          for obj in contents1.unwrap().iter(){
-            trace!("{}", obj.key.as_ref().unwrap());
-           
-            //copy_object(client, bucket, obj.key.as_ref().unwrap()).await;
-            let head_check_encryption = HeadObjectRequest{ bucket:bucket.to_owned(), key: obj.key.clone().unwrap().to_string().to_owned(),..Default::default() };
-            let head_result =  client.head_object(head_check_encryption).await.expect("Failed to retrieve head for object");
-            debug!("{:#?}",head_result);
-              
-            
-            match head_result.ssekms_key_id{
-              Some(key_id)=>{
-                  trace!("Encrypted by KMS key {} {}",key_id,obj.key.clone().unwrap().as_str() );
+          .await;
+    match response{
+      Ok(resy)=>{
+        let mut res = resy.clone();
+        loop{
+          debug!("Args: bucket {}",bucket.to_owned());
+          let contents1 = res.contents;
+          match contents1{
+            Some(_)=> {
+              for obj in contents1.unwrap().iter(){
+                trace!("{}", obj.key.as_ref().unwrap());
+                //copy_object(client, bucket, obj.key.as_ref().unwrap()).await;
+                let head_check_encryption = HeadObjectRequest{ bucket:bucket.to_owned(), key: obj.key.clone().unwrap().to_string().to_owned(),..Default::default() };
+                let head_result =  client.head_object(head_check_encryption).await.expect("Failed to retrieve head for object");
+                debug!("{:#?}",head_result);
+                match head_result.ssekms_key_id{
+                  Some(key_id)=>{
+                      trace!("Encrypted by KMS key {} {}",key_id,obj.key.clone().unwrap().as_str() );
+                  },
+                  _=>{
+                     match head_result.server_side_encryption{
+                       Some(algo)=>{
+                            trace!("Encrypted by SSE-C using {}",algo);      
+                       }
+                       _=>{
+                        trace!("Not encrypted");       
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            _ =>{
+                  trace!("No objects found");
+            }
+          }
+          match res.next_marker {
+              Some(_)=>{
+    
               },
               _=>{
-                 match head_result.server_side_encryption{
-                   Some(algo)=>{
-                    
-                        trace!("Encrypted by SSE-C using {}",algo);
-                   
-                   }
-                   _=>{
-                    trace!("Not encrypted");
-                    
-                    
-                   }
-                 }
+                debug!("No further pages of objects");
+                break;
               }
-            }
-            
           }
-        },
-        _ =>{
-          
-              trace!("No objects found");
-           
-          
+          list_request.marker = Some(res.next_marker.unwrap());
+          list_request.max_keys = Some(1000);
+          res = client
+              .list_objects(list_request.clone())
+              .await
+              .expect("list objects failed");
         }
+        
+      },
+      Err(err)=>{
+        error!("{:?}",err);
       }
-      match response.next_marker {
-          Some(_)=>{
 
-          },
-          _=>{
-            debug!("No further pages of objects");
-            break;
-          }
-      }
-      list_request.marker = Some(response.next_marker.unwrap());
-      list_request.max_keys = Some(1000);
-      response = client
-          .list_objects(list_request.clone())
-          .await
-          .expect("list objects failed");
+
+
     }
+    
   }
 
-  async fn copy_object(client: &S3Client, bucket: &str, filename: &str) {
-    let req = CopyObjectRequest {
-        bucket: bucket.to_owned(),
-        key: filename.to_owned(),
-        copy_source: format!("{}/{}", bucket, filename),
-        content_type: Some("application/json".to_owned()),
-        metadata_directive: Some("REPLACE".to_owned()),
-        server_side_encryption: Some("AES256".to_owned()),
-        ..Default::default()
-    };
-    let result = client
-        .copy_object(req)
-        .await
-        .expect("Couldn't copy object");
-    debug!("{:#?}", result);
-  }
+ 
 
 
 
