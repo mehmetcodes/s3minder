@@ -39,6 +39,19 @@ pub struct BucketMeta {
 
 
 
+
+pub fn buckets_from_csv_only(file_path:String)->Result<(), Box<dyn Error>> {
+  
+    let file = File::open(file_path)?;
+    let mut rdr = csv::Reader::from_reader(file);
+    for result in rdr.records() {
+        let record = result?;
+        println!("{:?}", record);
+    }
+    Ok(())
+}
+
+
 fn serialize_bucket_meta(){
   let file = OpenOptions::new()
                                                               .write(true)

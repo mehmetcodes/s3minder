@@ -142,6 +142,7 @@ async fn main() {
     _=>{ 
       info!("Config: {}",repair);
       info!("Config: Will attempt to use {} as a CSV list of buckets",config); 
+      gather::buckets_from_csv_only(config.to_string());
     }
   }
   info!("Main: Program complete");
