@@ -37,8 +37,10 @@ pub struct BucketMeta {
   pub objects_checked:bool,
 }
 
-
-
+#[derive(Deserialize)]
+struct CsvBucket<'a>{
+  bucket: &'a str,
+}
 
 pub fn buckets_from_csv_only(file_path:String)->Result<(), Box<dyn Error>> {
   
@@ -46,7 +48,8 @@ pub fn buckets_from_csv_only(file_path:String)->Result<(), Box<dyn Error>> {
     let mut rdr = csv::Reader::from_reader(file);
     for result in rdr.records() {
         let record = result?;
-        println!("{:?}", record);
+        let row: CsvBucket = record.deserialize(None)?;
+        info!("Now analyzing {} from csv", row.bucket);
     }
     Ok(())
 }
