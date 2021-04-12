@@ -141,8 +141,12 @@ async fn main() {
       },
     _=>{ 
       info!("Config: {}",repair);
-      info!("Config: Will attempt to use {} as a CSV list of buckets",config); 
-      gather::buckets_from_csv_only(config.to_string());
+      info!("Config: Will attempt to use {} as a CSV list of buckets",config);
+      let s3_client = S3Client::new(Region::UsWest1);
+      gather::buckets_from_csv_only(config.to_string(),&s3_client).await;
+      if repair > 0 {
+        remediate::remediate_buckets( &s3_client, remediation_options  ).await;
+      }
     }
   }
   info!("Main: Program complete");

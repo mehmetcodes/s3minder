@@ -42,15 +42,33 @@ struct CsvBucket<'a>{
   bucket: &'a str,
 }
 
-pub fn buckets_from_csv_only(file_path:String)->Result<(), Box<dyn Error>> {
+pub async fn buckets_from_csv_only(file_path:String, s3_client:&S3Client)->Result<(), Box<dyn Error>> {
   
     let file = File::open(file_path)?;
     let mut rdr = csv::Reader::from_reader(file);
+    let mut vec = Vec::<BucketMeta>::new();
     for result in rdr.records() {
         let record = result?;
         let row: CsvBucket = record.deserialize(None)?;
         info!("Now analyzing {} from csv", row.bucket);
+        let bkt:String = row.bucket.to_string();
+        let mut meta_bucket = get_bucket_location(row.bucket.to_string()).await;
+        let bkte:String = meta_bucket.bucket_endpoint.clone();
+        meta_bucket.contains_lifecycle = has_bucket_lifecycle(&s3_client, &bkt).await;
+        meta_bucket.default_encryption = has_encryption_rule(&s3_client, &bkt).await;
+        meta_bucket.web_bucket = is_web_bucket(&s3_client,&bkt).await;
+        meta_bucket.objects_checked = false;
+        vec.push(meta_bucket);
     }
+
+    for bucket_meta in vec.iter(){
+      trace!("{}", bucket_meta);
+      BUCKET_LIST.lock().unwrap().insert(bucket_meta.bucket_name.clone() ,bucket_meta.clone()); 
+      
+      
+      list_items_in_bucket(&s3_client, bucket_meta.bucket_name.as_str() ).await;
+  }
+  serialize_bucket_meta();
     Ok(())
 }
 
